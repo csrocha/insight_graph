@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.NodeContextMenu">
+        <!--
+            Positioned overlay at node bounding box. pointer-events:none so clicks
+            pass through to Cytoscape; re-enabled only on the action buttons/circles.
+        -->
+        <div class="o_insight_ctx_overlay" t-att-style="overlayStyle">
+
+            <!-- Top bar: form / delete / hide icons -->
+            <div class="o_insight_ctx_actions o_insight_ctx_actions_top">
+                <button class="o_insight_ctx_btn"
+                        t-on-click.stop="props.onOpenForm"
+                        title="Abrir formulario">
+                    <i class="fa fa-file-text-o"/>
+                </button>
+                <button class="o_insight_ctx_btn o_insight_ctx_btn_danger"
+                        t-on-click.stop="props.onDelete"
+                        title="Eliminar registro">
+                    <i class="fa fa-trash"/>
+                </button>
+                <button class="o_insight_ctx_btn"
+                        t-on-click.stop="props.onHide"
+                        title="Ocultar del grafo">
+                    <i class="fa fa-eye-slash"/>
+                </button>
+            </div>
+
+            <!-- Bottom bar: one draggable circle per relation link -->
+            <t t-if="props.linkDefs.length">
+                <div class="o_insight_ctx_actions o_insight_ctx_actions_bottom">
+                    <t t-foreach="props.linkDefs" t-as="link" t-key="link_index">
+                        <div class="o_insight_ctx_rel_circle"
+                             t-att-title="'Relacionar → ' + link.model"
+                             t-on-mousedown.stop="(e) => props.onStartLink(e, link)">
+                            <span t-esc="modelShortName(link.model)"/>
+                        </div>
+                    </t>
+                </div>
+            </t>
+
+        </div>
+    </t>
+</templates>

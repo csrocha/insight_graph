@@ -20,7 +20,11 @@
                 <InsightGraphRenderer
                     graphData="state.graphData"
                     primaryModel="props.resModel"
-                    onNodeClick.bind="onNodeClick"
+                    modelConfigs="state.modelConfigs"
+                    onOpenForm.bind="onOpenForm"
+                    onDeleteNode.bind="onDeleteNode"
+                    onLinkNodes.bind="onLinkNodes"
+                    onCreateAndLink.bind="onCreateAndLink"
                 />
             </t>
         </Layout>

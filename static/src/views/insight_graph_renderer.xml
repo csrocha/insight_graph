@@ -64,10 +64,42 @@
                 </div>
             </div>
 
-            <!-- Graph canvas -->
+            <!-- Graph canvas + overlays -->
             <div t-ref="graphBody" class="o_insight_graph_body position-relative">
                 <div t-ref="cytoscapeContainer" style="width:100%;height:100%"/>
-                <NodeTooltip t-if="state.tooltip" info="state.tooltip"/>
+
+                <!-- Hover tooltip — hidden while a node is selected or a drag is active -->
+                <NodeTooltip t-if="state.tooltip and !state.selectedNodeId and !state.linkingState"
+                             info="state.tooltip"/>
+
+                <!-- Contextual action overlay for selected node -->
+                <NodeContextMenu t-if="contextMenuInfo"
+                    pos="contextMenuInfo.pos"
+                    linkDefs="contextMenuInfo.linkDefs"
+                    onOpenForm.bind="onOpenFormSelected"
+                    onDelete.bind="onDeleteSelected"
+                    onHide.bind="onHideSelected"
+                    onStartLink.bind="onStartLink"
+                />
+
+                <!-- SVG drag line while linking -->
+                <t t-if="state.linkingState">
+                    <svg class="o_insight_link_svg" xmlns="http://www.w3.org/2000/svg">
+                        <line
+                            t-att-x1="state.linkingState.sourceX"
+                            t-att-y1="state.linkingState.sourceY"
+                            t-att-x2="state.linkingState.mouseX"
+                            t-att-y2="state.linkingState.mouseY"
+                            stroke="#2563eb" stroke-width="2"
+                            stroke-dasharray="6,4" stroke-linecap="round"
+                        />
+                        <circle
+                            t-att-cx="state.linkingState.mouseX"
+                            t-att-cy="state.linkingState.mouseY"
+                            r="5" fill="#2563eb" opacity="0.7"
+                        />
+                    </svg>
+                </t>
             </div>
 
         </div>

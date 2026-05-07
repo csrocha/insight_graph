@@ -25,6 +25,8 @@
             'insight_graph/static/src/views/insight_graph.js',
             'insight_graph/static/src/components/NodeTooltip/NodeTooltip.js',
             'insight_graph/static/src/components/NodeTooltip/NodeTooltip.xml',
+            'insight_graph/static/src/components/NodeContextMenu/NodeContextMenu.js',
+            'insight_graph/static/src/components/NodeContextMenu/NodeContextMenu.xml',
             'insight_graph/static/src/scss/insight_graph.scss',
         ],
     },

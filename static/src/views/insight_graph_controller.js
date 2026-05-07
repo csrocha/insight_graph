@@ -5,6 +5,8 @@ import { useService } from "@web/core/utils/hooks";
 import { Layout } from "@web/search/layout";
 import { SearchBar } from "@web/search/search_bar/search_bar";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
+import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
 import { InsightGraphArchParser } from "./insight_graph_arch_parser";
 import { InsightGraphRenderer } from "./insight_graph_renderer";
 
@@ -15,7 +17,6 @@ export class InsightGraphController extends Component {
         resModel: { type: String },
         domain: { type: Array, optional: true },
         archInfo: { type: Object, optional: true },
-        // standard view props — must declare all to satisfy OWL strict prop checking
         context: { type: Object, optional: true },
         fields: { type: Object, optional: true },
         useSampleData: { type: Boolean, optional: true },
@@ -41,12 +42,14 @@ export class InsightGraphController extends Component {
     setup() {
         this.orm = useService("orm");
         this.actionService = useService("action");
+        this.dialogService = useService("dialog");
         this.searchBarToggler = useSearchBarToggler();
 
         this.state = useState({
             loading: true,
             error: null,
             graphData: null,
+            modelConfigs: {},
         });
 
         onWillStart(() => this._loadGraphData());
@@ -61,7 +64,6 @@ export class InsightGraphController extends Component {
         this.state.loading = true;
         this.state.error = null;
         try {
-            // Load all insight_graph arch configs from the server (all models)
             const allViews = await this.orm.searchRead(
                 "ir.ui.view",
                 [["type", "=", "insight_graph"], ["active", "=", true]],
@@ -82,7 +84,6 @@ export class InsightGraphController extends Component {
                 return;
             }
 
-            // Fetch primary records (those matching the current domain/filter)
             const primaryFields = this._getNeededFields(primaryConfig);
             const primaryRecords = await this.orm.searchRead(
                 this.props.resModel,
@@ -90,15 +91,13 @@ export class InsightGraphController extends Component {
                 primaryFields
             );
 
-            // BFS: wave-based traversal collecting nodes and edges
             const nodes = [];
             const edges = [];
-            const visited = new Map(); // "model::id" → nodeId string
+            const visited = new Map();
             const edgeSet = new Set();
-            const pendingEdges = []; // { fromKey, toKey, direction }
+            const pendingEdges = [];
 
-            // Seed the first wave from primary records
-            let currentWave = new Map(); // model → Set<id>
+            let currentWave = new Map();
 
             for (const rec of primaryRecords) {
                 const key = `${this.props.resModel}::${rec.id}`;
@@ -119,7 +118,6 @@ export class InsightGraphController extends Component {
                 }
             }
 
-            // BFS expansion — stop when no new records are discovered
             while (currentWave.size > 0) {
                 const nextWave = new Map();
 
@@ -155,13 +153,11 @@ export class InsightGraphController extends Component {
                 currentWave = nextWave;
             }
 
-            // Resolve edges — skip if either endpoint was never fetched
             for (const { fromKey, toKey, direction, fromModel, field } of pendingEdges) {
                 const fromId = visited.get(fromKey);
                 const toId = visited.get(toKey);
                 if (!fromId || !toId) continue;
 
-                // direction "downstream": from → to; "upstream": to → from (data flows left→right)
                 const [src, tgt] = direction === "upstream" ? [toId, fromId] : [fromId, toId];
                 const key = `${src}→${tgt}`;
                 if (!edgeSet.has(key)) {
@@ -170,7 +166,6 @@ export class InsightGraphController extends Component {
                 }
             }
 
-            // Build nodeLegend: one entry per unique model present in the graph
             const uniqueModels = [...new Set(nodes.map((n) => n.model))];
             const nodeLegend = uniqueModels.map((model) => ({
                 model,
@@ -178,7 +173,6 @@ export class InsightGraphController extends Component {
                 isPrimary: model === this.props.resModel,
             }));
 
-            // Build edgeLegend: unique source→target link types (downstream direction only)
             const edgeLegend = [];
             const seenEdgeTypes = new Set();
             for (const [model, config] of Object.entries(modelConfigs)) {
@@ -200,6 +194,7 @@ export class InsightGraphController extends Component {
                 }
             }
 
+            this.state.modelConfigs = modelConfigs;
             this.state.graphData = { nodes, edges, nodeLegend, edgeLegend };
         } catch (e) {
             console.error("InsightGraph: error loading graph data", e);
@@ -207,6 +202,62 @@ export class InsightGraphController extends Component {
         } finally {
             this.state.loading = false;
         }
+    }
+
+    // ── Node action handlers ─────────────────────────────────────────────────
+
+    onOpenForm(nodeData) {
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: nodeData.model,
+            res_id: nodeData.resId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    onDeleteNode(nodeData) {
+        this.dialogService.add(ConfirmationDialog, {
+            title: "Eliminar registro",
+            body: `¿Eliminar "${nodeData.label}"? Esta acción no se puede deshacer.`,
+            confirm: async () => {
+                await this.orm.unlink(nodeData.model, [nodeData.resId]);
+                await this._loadGraphData();
+            },
+        });
+    }
+
+    async onLinkNodes(sourceNodeData, targetNodeData, linkDef) {
+        await this._writeLink(sourceNodeData, targetNodeData.resId, linkDef);
+        await this._loadGraphData();
+    }
+
+    onCreateAndLink(sourceNodeData, linkDef) {
+        // Pre-fill back-reference on the new record when the inverse field is known
+        const edgeLeg = this.state.graphData?.edgeLegend.find(
+            (e) => e.sourceModel === sourceNodeData.model && e.sourceField === linkDef.field
+        );
+        const backField = edgeLeg?.targetField;
+        const context = backField ? { [`default_${backField}`]: sourceNodeData.resId } : {};
+
+        this.dialogService.add(FormViewDialog, {
+            resModel: linkDef.model,
+            context,
+            onRecordSaved: async (record) => {
+                // Always write the forward link to guarantee the relation exists
+                await this._writeLink(sourceNodeData, record.resId, linkDef);
+                await this._loadGraphData();
+            },
+        });
+    }
+
+    // ── Internal helpers ─────────────────────────────────────────────────────
+
+    async _writeLink(sourceNodeData, targetResId, linkDef) {
+        const writeValues = linkDef.direction === "upstream"
+            ? { [linkDef.field]: targetResId }
+            : { [linkDef.field]: [[4, targetResId]] };
+        await this.orm.write(sourceNodeData.model, [sourceNodeData.resId], writeValues);
     }
 
     _getNeededFields(config) {
@@ -227,7 +278,6 @@ export class InsightGraphController extends Component {
         const primary = config?.primaryField || "display_name";
         const colorFieldName = config?.colorField;
         const rawLabel = rec[primary];
-        // Many2one fields return [id, name] — unwrap if needed
         const label = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
         const flowState = colorFieldName ? (rec[colorFieldName] || null) : null;
 
@@ -254,21 +304,9 @@ export class InsightGraphController extends Component {
         if (!fieldValue || fieldValue === false) return [];
         if (!Array.isArray(fieldValue)) return [];
         if (fieldValue.length === 0) return [];
-        // Many2one: [id, "name"] — first element is a number, second a string
         if (fieldValue.length === 2 && typeof fieldValue[0] === "number" && typeof fieldValue[1] === "string") {
             return [fieldValue[0]];
         }
-        // One2many / Many2many: array of integer IDs
         return fieldValue.filter((v) => typeof v === "number");
-    }
-
-    onNodeClick(nodeData) {
-        this.actionService.doAction({
-            type: "ir.actions.act_window",
-            res_model: nodeData.model,
-            res_id: nodeData.resId,
-            views: [[false, "form"]],
-            target: "current",
-        });
     }
 }
