@@ -50,8 +50,41 @@
                     </div>
                 </t>
 
-                <!-- Zoom controls -->
-                <div class="ms-auto d-flex gap-1">
+                <!-- Layout selector + zoom controls -->
+                <div class="ms-auto d-flex gap-1 align-items-center">
+
+                    <!-- Layout dropdown -->
+                    <div class="position-relative">
+                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                t-on-click="onToggleLayoutMenu"
+                                title="Cambiar layout del grafo">
+                            <i t-attf-class="fa #{currentLayout.icon}"/>
+                            <span t-esc="currentLayout.label"/>
+                            <i class="fa fa-caret-down ms-1"/>
+                        </button>
+                        <ul t-if="state.layoutMenuOpen"
+                            class="o_insight_layout_menu dropdown-menu show">
+                            <t t-foreach="constructor.LAYOUTS" t-as="layout" t-key="layout.key">
+                                <li>
+                                    <button t-attf-class="dropdown-item d-flex align-items-center gap-2 #{state.layoutKey === layout.key ? 'active' : ''}"
+                                            t-on-click="(e) => this.onSelectLayout(e, layout.key)">
+                                        <i t-attf-class="fa #{layout.icon}" style="width:14px;text-align:center"/>
+                                        <t t-esc="layout.label"/>
+                                    </button>
+                                </li>
+                            </t>
+                        </ul>
+                    </div>
+
+                    <div class="o_insight_legend_sep"/>
+
+                    <!-- Zoom to selected node -->
+                    <button class="btn btn-sm btn-outline-secondary"
+                            t-on-click="onZoomToSelected"
+                            t-att-disabled="!state.selectedNodeId"
+                            title="Zoom al nodo seleccionado">
+                        <i class="fa fa-crosshairs"/>
+                    </button>
                     <button class="btn btn-sm btn-outline-secondary" t-on-click="onZoomIn" title="Zoom in">
                         <i class="fa fa-search-plus"/>
                     </button>

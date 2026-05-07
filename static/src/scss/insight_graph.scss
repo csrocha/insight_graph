@@ -205,6 +205,28 @@
     }
 }
 
+// ── Layout selector dropdown ──────────────────────────────────────────────
+
+.o_insight_layout_menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 150px;
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+    .dropdown-item {
+        font-size: 13px;
+        padding: 5px 12px;
+
+        &.active {
+            background: #e8f4fd;
+            color: #1a5276;
+            font-weight: 600;
+        }
+    }
+}
+
 // ── SVG drag-link line overlay ────────────────────────────────────────────
 
 .o_insight_link_svg {

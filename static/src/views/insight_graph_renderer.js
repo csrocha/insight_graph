@@ -1,6 +1,6 @@
 /** @odoo-module **/
 
-import { Component, onMounted, onWillUnmount, useRef, useState } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, useExternalListener, useRef, useState } from "@odoo/owl";
 /* global ResizeObserver */
 import { NodeTooltip } from "../components/NodeTooltip/NodeTooltip";
 import { NodeContextMenu } from "../components/NodeContextMenu/NodeContextMenu";
@@ -8,6 +8,15 @@ import { NodeContextMenu } from "../components/NodeContextMenu/NodeContextMenu";
 export class InsightGraphRenderer extends Component {
     static template = "insight_graph.InsightGraphRenderer";
     static components = { NodeTooltip, NodeContextMenu };
+    static LAYOUTS = [
+        { key: "dagre-lr",   label: "Izq → Der",    icon: "fa-long-arrow-right" },
+        { key: "dagre-tb",   label: "Arr → Abj",    icon: "fa-long-arrow-down"  },
+        { key: "circle",     label: "Circular",      icon: "fa-circle-o"         },
+        { key: "concentric", label: "Concéntrico",   icon: "fa-bullseye"         },
+        { key: "breadthfirst",label: "Árbol",        icon: "fa-sitemap"          },
+        { key: "grid",       label: "Grilla",        icon: "fa-th"               },
+        { key: "cose",       label: "Fuerza",        icon: "fa-random"           },
+    ];
     static props = {
         graphData: { type: Object },
         primaryModel: { type: String },
@@ -33,6 +42,12 @@ export class InsightGraphRenderer extends Component {
             contextMenuPos: null,   // { x1, y1, w, h } rendered px, relative to graphBody
             linkingState: null,     // { linkDef, sourceNodeData, sourceX, sourceY, mouseX, mouseY, hoverNodeId }
             hiddenNodes: {},        // nodeId → true  (persists within session until page reload)
+            layoutKey: "dagre-lr",
+            layoutMenuOpen: false,
+        });
+
+        useExternalListener(window, "click", () => {
+            this.state.layoutMenuOpen = false;
         });
 
         onMounted(() => {
@@ -110,14 +125,18 @@ export class InsightGraphRenderer extends Component {
             const hiddenIds = relatedIds.filter((id) => this.state.hiddenNodes[id]);
             const visibleIds = relatedIds.filter((id) => !this.state.hiddenNodes[id]);
 
-            // Suppress circle only for a true M2O situation: exactly one related node,
-            // it is currently visible, and nothing is hidden.
-            // O2M/M2M upstream fields (e.g. provider_ids) have relatedIds.length > 1
-            // and should always keep the circle.
             const isSingleM2OVisible =
                 relatedIds.length === 1 && visibleIds.length === 1 && hiddenIds.length === 0;
-            if (link.direction === "upstream" && isSingleM2OVisible) continue;
 
+            console.debug(
+                `[ig:ctx] field=${link.field} dir=${link.direction}` +
+                ` related=[${relatedIds.join(",")}]` +
+                ` hidden=[${hiddenIds.join(",")}]` +
+                ` visible=[${visibleIds.join(",")}]` +
+                ` ${(link.direction === "upstream" && isSingleM2OVisible) ? "SKIP" : `show isCollapsed=${hiddenIds.length > 0}`}`
+            );
+
+            if (link.direction === "upstream" && isSingleM2OVisible) continue;
             linkDefs.push({ ...link, isCollapsed: hiddenIds.length > 0 });
         }
 
@@ -267,17 +286,21 @@ export class InsightGraphRenderer extends Component {
     // ── Hidden node helpers ───────────────────────────────────────────────────
 
     /**
-     * Returns the IDs (Cytoscape node IDs) of nodes that are related to `nodeData`
-     * through `linkDef`, as present in graphData.edges.
+     * Returns the Cytoscape node IDs of nodes related to `nodeData` through `linkDef`.
+     * Uses the target model for matching rather than edge metadata, because the controller
+     * deduplicates edges by visual direction (src→tgt) and may store metadata from either
+     * side of a bidirectionally-declared relationship.
      */
     _getRelatedNodeIds(nodeData, linkDef) {
-        const { edges } = this.props.graphData;
+        const { edges, nodes } = this.props.graphData;
+        const targetIds = new Set(
+            nodes.filter((n) => n.model === linkDef.model).map((n) => n.id)
+        );
         const related = [];
         for (const edge of edges) {
-            if (edge.relationModel !== nodeData.model || edge.relationField !== linkDef.field) continue;
-            if (linkDef.direction === "downstream" && edge.source === nodeData.id) {
+            if (linkDef.direction === "downstream" && edge.source === nodeData.id && targetIds.has(edge.target)) {
                 related.push(edge.target);
-            } else if (linkDef.direction === "upstream" && edge.target === nodeData.id) {
+            } else if (linkDef.direction === "upstream" && edge.target === nodeData.id && targetIds.has(edge.source)) {
                 related.push(edge.source);
             }
         }
@@ -327,9 +350,12 @@ export class InsightGraphRenderer extends Component {
         }
         this.state.selectedNodeId = nodeId;
         if (nodeId) {
+            const nodeData = this.props.graphData.nodes.find((n) => n.id === nodeId);
+            console.debug(`[ig:select] nodeId=${nodeId} label="${nodeData?.label}" model=${nodeData?.model}`);
             this.cy?.getElementById(nodeId).addClass("ig-selected");
             this._updateContextMenuPos();
         } else {
+            console.debug("[ig:select] deselected");
             this.state.contextMenuPos = null;
         }
     }
@@ -565,6 +591,65 @@ export class InsightGraphRenderer extends Component {
                 },
             },
         ];
+    }
+
+    // ── Layout controls ──────────────────────────────────────────────────────
+
+    get currentLayout() {
+        return InsightGraphRenderer.LAYOUTS.find((l) => l.key === this.state.layoutKey)
+            || InsightGraphRenderer.LAYOUTS[0];
+    }
+
+    onToggleLayoutMenu(e) {
+        e.stopPropagation();
+        this.state.layoutMenuOpen = !this.state.layoutMenuOpen;
+    }
+
+    onSelectLayout(e, key) {
+        e.stopPropagation();
+        this.state.layoutKey = key;
+        this.state.layoutMenuOpen = false;
+        this._applyLayout(key);
+    }
+
+    _applyLayout(key) {
+        if (!this.cy) return;
+        const visibleEles = this.cy.elements(":visible");
+        const base = { animate: true, animationDuration: 350, animationEasing: "ease-in-out-cubic", padding: 40, eles: visibleEles };
+        let opts;
+        switch (key) {
+            case "dagre-lr":
+                opts = { name: "dagre", rankDir: "LR", nodeSep: 50, rankSep: 100 };
+                break;
+            case "dagre-tb":
+                opts = { name: "dagre", rankDir: "TB", nodeSep: 50, rankSep: 80 };
+                break;
+            case "circle":
+                opts = { name: "circle" };
+                break;
+            case "concentric":
+                opts = { name: "concentric", levelWidth: () => 1, minNodeSpacing: 60 };
+                break;
+            case "breadthfirst":
+                opts = { name: "breadthfirst", directed: true, spacingFactor: 1.4 };
+                break;
+            case "grid":
+                opts = { name: "grid", avoidOverlap: true, spacingFactor: 1.2 };
+                break;
+            case "cose":
+                opts = { name: "cose", nodeRepulsion: () => 8000, idealEdgeLength: () => 120 };
+                break;
+            default:
+                opts = { name: "dagre", rankDir: "LR", nodeSep: 50, rankSep: 100 };
+        }
+        this.cy.layout({ ...base, ...opts }).run();
+    }
+
+    onZoomToSelected() {
+        if (!this.state.selectedNodeId || !this.cy) return;
+        const node = this.cy.getElementById(this.state.selectedNodeId);
+        if (!node || node.empty()) return;
+        this.cy.animate({ fit: { eles: node, padding: 120 }, duration: 350, easing: "ease-in-out-cubic" });
     }
 
     onZoomIn() {

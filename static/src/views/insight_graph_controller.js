@@ -221,6 +221,7 @@ export class InsightGraphController extends Component {
     // ── Node action handlers ─────────────────────────────────────────────────
 
     onOpenForm(nodeData) {
+        console.debug(`[ig:action] open form model=${nodeData.model} resId=${nodeData.resId} label="${nodeData.label}"`);
         this.actionService.doAction({
             type: "ir.actions.act_window",
             res_model: nodeData.model,
@@ -248,10 +249,12 @@ export class InsightGraphController extends Component {
 
     async onCreateAndLink(sourceNodeData, linkDef) {
         const context = await this._buildCreateContext(sourceNodeData, linkDef);
+        console.debug(`[ig:action] open create dialog model=${linkDef.model} source=${sourceNodeData.model}#${sourceNodeData.resId} context=${JSON.stringify(context)}`);
         this.dialogService.add(FormViewDialog, {
             resModel: linkDef.model,
             context,
             onRecordSaved: async (record) => {
+                console.debug(`[ig:action] record saved resId=${record.resId} → linking to source`);
                 await this._writeLink(sourceNodeData, record.resId, linkDef);
                 await this._loadGraphData();
             },
