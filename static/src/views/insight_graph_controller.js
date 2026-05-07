@@ -110,7 +110,7 @@ export class InsightGraphController extends Component {
                     const ids = this._extractIds(rec[link.field]);
                     for (const id of ids) {
                         const targetKey = `${link.model}::${id}`;
-                        pendingEdges.push({ fromKey: key, toKey: targetKey, direction: link.direction });
+                        pendingEdges.push({ fromKey: key, toKey: targetKey, direction: link.direction, fromModel: this.props.resModel, field: link.field });
                         if (!visited.has(targetKey)) {
                             if (!currentWave.has(link.model)) currentWave.set(link.model, new Set());
                             currentWave.get(link.model).add(id);
@@ -142,7 +142,7 @@ export class InsightGraphController extends Component {
                             const ids = this._extractIds(rec[link.field]);
                             for (const id of ids) {
                                 const targetKey = `${link.model}::${id}`;
-                                pendingEdges.push({ fromKey: key, toKey: targetKey, direction: link.direction });
+                                pendingEdges.push({ fromKey: key, toKey: targetKey, direction: link.direction, fromModel: model, field: link.field });
                                 if (!visited.has(targetKey)) {
                                     if (!nextWave.has(link.model)) nextWave.set(link.model, new Set());
                                     nextWave.get(link.model).add(id);
@@ -156,7 +156,7 @@ export class InsightGraphController extends Component {
             }
 
             // Resolve edges — skip if either endpoint was never fetched
-            for (const { fromKey, toKey, direction } of pendingEdges) {
+            for (const { fromKey, toKey, direction, fromModel, field } of pendingEdges) {
                 const fromId = visited.get(fromKey);
                 const toId = visited.get(toKey);
                 if (!fromId || !toId) continue;
@@ -166,11 +166,41 @@ export class InsightGraphController extends Component {
                 const key = `${src}→${tgt}`;
                 if (!edgeSet.has(key)) {
                     edgeSet.add(key);
-                    edges.push({ source: src, target: tgt });
+                    edges.push({ source: src, target: tgt, relationModel: fromModel, relationField: field });
                 }
             }
 
-            this.state.graphData = { nodes, edges };
+            // Build nodeLegend: one entry per unique model present in the graph
+            const uniqueModels = [...new Set(nodes.map((n) => n.model))];
+            const nodeLegend = uniqueModels.map((model) => ({
+                model,
+                shape: modelConfigs[model]?.shape || "rectangle",
+                isPrimary: model === this.props.resModel,
+            }));
+
+            // Build edgeLegend: unique source→target link types (downstream direction only)
+            const edgeLegend = [];
+            const seenEdgeTypes = new Set();
+            for (const [model, config] of Object.entries(modelConfigs)) {
+                if (!config) continue;
+                for (const link of config.links) {
+                    if (link.direction !== "downstream") continue;
+                    const edgeKey = `${model}→${link.model}`;
+                    if (seenEdgeTypes.has(edgeKey)) continue;
+                    seenEdgeTypes.add(edgeKey);
+                    const inverse = modelConfigs[link.model]?.links.find(
+                        (l) => l.model === model && l.direction === "upstream"
+                    );
+                    edgeLegend.push({
+                        sourceModel: model,
+                        sourceField: link.field,
+                        targetModel: link.model,
+                        targetField: inverse?.field || null,
+                    });
+                }
+            }
+
+            this.state.graphData = { nodes, edges, nodeLegend, edgeLegend };
         } catch (e) {
             console.error("InsightGraph: error loading graph data", e);
             this.state.error = e.message || String(e);

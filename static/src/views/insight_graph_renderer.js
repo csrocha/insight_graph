@@ -8,7 +8,7 @@ export class InsightGraphRenderer extends Component {
     static template = "insight_graph.InsightGraphRenderer";
     static components = { NodeTooltip };
     static props = {
-        graphData: { type: Object },      // { nodes: [], edges: [] }
+        graphData: { type: Object },      // { nodes: [], edges: [], nodeLegend: [], edgeLegend: [] }
         primaryModel: { type: String },   // model name of primary records
         onNodeClick: { type: Function },
     };
@@ -19,7 +19,11 @@ export class InsightGraphRenderer extends Component {
         this.cy = null;
         this._resizeObserver = null;
 
-        this.state = useState({ tooltip: null });
+        this.state = useState({
+            tooltip: null,
+            colorMap: { _default: { bgColor: "#e8f4fd", borderColor: "#4a9eda", textColor: "#1a5276" } },
+            edgeColorMap: {},
+        });
 
         onMounted(() => {
             this._fitBodyHeight();
@@ -40,10 +44,69 @@ export class InsightGraphRenderer extends Component {
         });
     }
 
+    // ── Legend getters ───────────────────────────────────────────────────────
+
+    get colorLegend() {
+        const { nodes } = this.props.graphData;
+        const states = [...new Set(nodes.map((n) => n.flowState).filter(Boolean))];
+        return states.map((state) => ({
+            state,
+            ...(this.state.colorMap[state] || this.state.colorMap._default),
+        }));
+    }
+
+    get nodeLegend() {
+        return this.props.graphData.nodeLegend || [];
+    }
+
+    get edgeLegend() {
+        return this.props.graphData.edgeLegend || [];
+    }
+
+    get defaultNodeColors() {
+        return this.state.colorMap._default;
+    }
+
+    modelShortName(model) {
+        return model.split(".").pop();
+    }
+
+    edgeLegendLabel(rel) {
+        const src = `${this.modelShortName(rel.sourceModel)}.${rel.sourceField}`;
+        const tgt = rel.targetField
+            ? `${this.modelShortName(rel.targetModel)}.${rel.targetField}`
+            : this.modelShortName(rel.targetModel);
+        return `${src} → ${tgt}`;
+    }
+
+    edgeLegendColor(rel) {
+        const key = `${rel.sourceModel}::${rel.sourceField}`;
+        return this.state.edgeColorMap[key] || "#adb5bd";
+    }
+
+    // ── Internal helpers ─────────────────────────────────────────────────────
+
     _fitBodyHeight() {
         const el = this.graphBody.el;
         const top = el.getBoundingClientRect().top;
         el.style.height = Math.max(200, window.innerHeight - top) + "px";
+    }
+
+    _resolveEdgeColors(edges) {
+        const style = getComputedStyle(this.container.el);
+        const readVar = (name) => style.getPropertyValue(name).trim();
+        const DEFAULT_COLOR = "#adb5bd";
+        const cache = {};
+        for (const edge of edges) {
+            const { relationModel, relationField } = edge;
+            if (!relationModel || !relationField) continue;
+            const key = `${relationModel}::${relationField}`;
+            if (!(key in cache)) {
+                const varName = `--o-insight-relation-${relationModel.replace(/\./g, "-")}-${relationField}`;
+                cache[key] = readVar(varName) || DEFAULT_COLOR;
+            }
+        }
+        return cache;
     }
 
     _resolveStateColors(nodes) {
@@ -70,12 +133,21 @@ export class InsightGraphRenderer extends Component {
     _initCytoscape() {
         const { nodes, edges } = this.props.graphData;
         const colorCache = this._resolveStateColors(nodes);
+        this.state.colorMap = colorCache;
+        const edgeColorCache = this._resolveEdgeColors(edges);
+        this.state.edgeColorMap = edgeColorCache;
 
         const elements = [
             ...nodes.map((n) => ({
                 data: { ...n, ...colorCache[n.flowState || "_default"] },
             })),
-            ...edges.map((e) => ({ data: { source: e.source, target: e.target } })),
+            ...edges.map((e) => {
+                const colorKey = e.relationModel && e.relationField
+                    ? `${e.relationModel}::${e.relationField}`
+                    : null;
+                const lineColor = (colorKey && edgeColorCache[colorKey]) || "#adb5bd";
+                return { data: { source: e.source, target: e.target, lineColor } };
+            }),
         ];
 
         /* global cytoscape */
@@ -130,7 +202,7 @@ export class InsightGraphRenderer extends Component {
     _buildStyle() {
         const primaryModel = this.props.primaryModel;
         return [
-            // ── Base node — colors come from node data (resolved from CSS vars) ──
+            // ── Base node — auto-height from label to prevent text overflow ──
             {
                 selector: "node",
                 style: {
@@ -141,8 +213,8 @@ export class InsightGraphRenderer extends Component {
                     "text-valign": "center",
                     "text-halign": "center",
                     width: "130px",
-                    height: "44px",
-
+                    height: "label",
+                    padding: "10px",
                     "border-width": 2,
                     "background-color": "data(bgColor)",
                     "border-color": "data(borderColor)",
@@ -166,18 +238,18 @@ export class InsightGraphRenderer extends Component {
             // ── Shapes ─────────────────────────────────────────────
             { selector: 'node[shape = "roundrectangle"]', style: { shape: "roundrectangle" } },
             { selector: 'node[shape = "rectangle"]',      style: { shape: "rectangle" } },
-            { selector: 'node[shape = "diamond"]',        style: { shape: "diamond", width: "150px", height: "60px" } },
+            { selector: 'node[shape = "diamond"]',        style: { shape: "diamond", width: "150px", padding: "22px" } },
             { selector: 'node[shape = "ellipse"]',        style: { shape: "ellipse" } },
-            // ── Edges ──────────────────────────────────────────────
+            // ── Edges — color driven by --o-insight-relation-{model}-{field} CSS var ──
             {
                 selector: "edge",
                 style: {
-                    width: 1.5,
-                    "line-color": "#adb5bd",
-                    "target-arrow-color": "#adb5bd",
+                    width: 2,
+                    "line-color": "data(lineColor)",
+                    "target-arrow-color": "data(lineColor)",
                     "target-arrow-shape": "triangle",
                     "curve-style": "bezier",
-                    opacity: 0.7,
+                    opacity: 0.8,
                 },
             },
         ];
