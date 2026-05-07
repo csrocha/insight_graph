@@ -91,7 +91,7 @@ export class InsightGraphRenderer extends Component {
                 padding: 40,
                 animate: false,
             },
-            wheelSensitivity: 0.3,
+            wheelSensitivity: 1,
             minZoom: 0.1,
             maxZoom: 3,
         });
@@ -101,6 +101,7 @@ export class InsightGraphRenderer extends Component {
         });
 
         this.cy.on("mouseover", "node", (evt) => {
+            this.container.el.style.cursor = "pointer";
             const node = evt.target;
             const pos = node.renderedPosition();
             const data = node.data();
@@ -116,6 +117,7 @@ export class InsightGraphRenderer extends Component {
         });
 
         this.cy.on("mouseout", "node", () => {
+            this.container.el.style.cursor = "";
             this.state.tooltip = null;
         });
 
@@ -140,7 +142,7 @@ export class InsightGraphRenderer extends Component {
                     "text-halign": "center",
                     width: "130px",
                     height: "44px",
-                    cursor: "pointer",
+
                     "border-width": 2,
                     "background-color": "data(bgColor)",
                     "border-color": "data(borderColor)",
