@@ -1,5 +1,11 @@
+// Default node colors — override in your module's SCSS by redefining
+// --o-insight-state-{value}-{bg|border|text} inside .o_insight_graph_view.
 .o_insight_graph_view {
     background: #f8f9fa;
+
+    --o-insight-state-default-bg:     #e8f4fd;
+    --o-insight-state-default-border: #4a9eda;
+    --o-insight-state-default-text:   #1a5276;
 }
 
 .o_insight_toolbar {
@@ -29,8 +35,7 @@
     }
 }
 
-// flow_state badge colors (mirrors FLOW_COLORS in the JS renderer)
-.o_insight_badge_complete   { background-color: #28a745; color: #fff; }
-.o_insight_badge_incomplete { background-color: #ffc107; color: #333; }
-.o_insight_badge_inactive   { background-color: #6c757d; color: #fff; }
-.o_insight_badge_error      { background-color: #dc3545; color: #fff; }
+// Tooltip badge colors — only used by NodeTooltip, not by Cytoscape canvas.
+// These intentionally have no values here; domain modules define them.
+// See survey_insights_manager for the flow_state example.
+.o_insight_badge { border-radius: 3px; padding: 1px 5px; font-size: 11px; }

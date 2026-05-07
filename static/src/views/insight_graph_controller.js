@@ -1,34 +1,47 @@
 /** @odoo-module **/
 
-import { Component, onWillStart, useState } from "@odoo/owl";
+import { Component, onWillStart, onWillUpdateProps, useState } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
+import { Layout } from "@web/search/layout";
+import { SearchBar } from "@web/search/search_bar/search_bar";
+import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
 import { InsightGraphArchParser } from "./insight_graph_arch_parser";
 import { InsightGraphRenderer } from "./insight_graph_renderer";
 
 export class InsightGraphController extends Component {
     static template = "insight_graph.InsightGraphController";
-    static components = { InsightGraphRenderer };
+    static components = { InsightGraphRenderer, Layout, SearchBar };
     static props = {
         resModel: { type: String },
         domain: { type: Array, optional: true },
         archInfo: { type: Object, optional: true },
-        // standard view props we don't use but must accept
+        // standard view props — must declare all to satisfy OWL strict prop checking
         context: { type: Object, optional: true },
         fields: { type: Object, optional: true },
         useSampleData: { type: Boolean, optional: true },
+        useSampleModel: { type: Boolean, optional: true },
         noBreadcrumbs: { type: Boolean, optional: true },
         display: { type: Object, optional: true },
+        className: { type: String, optional: true },
         groupBy: { type: Array, optional: true },
         orderBy: { type: Array, optional: true },
         searchMenuTypes: { type: Array, optional: true },
         globalState: { type: Object, optional: true },
         irFilters: { type: Array, optional: true },
         allowedGroupBys: { type: Object, optional: true },
+        info: { type: Object, optional: true },
+        arch: { type: Object, optional: true },
+        relatedModels: { type: Object, optional: true },
+        selectRecord: { type: Function, optional: true },
+        createRecord: { type: Function, optional: true },
+        limit: { type: Number, optional: true },
+        comparison: { optional: true },
     };
 
     setup() {
         this.orm = useService("orm");
         this.actionService = useService("action");
+        this.searchBarToggler = useSearchBarToggler();
 
         this.state = useState({
             loading: true,
@@ -37,9 +50,16 @@ export class InsightGraphController extends Component {
         });
 
         onWillStart(() => this._loadGraphData());
+        onWillUpdateProps((nextProps) => {
+            if (JSON.stringify(nextProps.domain) !== JSON.stringify(this.props.domain)) {
+                this._loadGraphData(nextProps.domain);
+            }
+        });
     }
 
-    async _loadGraphData() {
+    async _loadGraphData(domain) {
+        this.state.loading = true;
+        this.state.error = null;
         try {
             // Load all insight_graph arch configs from the server (all models)
             const allViews = await this.orm.searchRead(
@@ -66,7 +86,7 @@ export class InsightGraphController extends Component {
             const primaryFields = this._getNeededFields(primaryConfig);
             const primaryRecords = await this.orm.searchRead(
                 this.props.resModel,
-                this.props.domain || [],
+                domain ?? this.props.domain ?? [],
                 primaryFields
             );
 
@@ -175,11 +195,12 @@ export class InsightGraphController extends Component {
 
     _makeNode(rec, model, config, isPrimary) {
         const primary = config?.primaryField || "display_name";
-        const color = config?.colorField;
+        const colorFieldName = config?.colorField;
         const rawLabel = rec[primary];
         // Many2one fields return [id, name] — unwrap if needed
         const label = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
-        const flowState = color ? (rec[color] || "incomplete") : null;
+        const flowState = colorFieldName ? (rec[colorFieldName] || null) : null;
+
         const tooltipFields = (config?.nodeFields || [])
             .filter((f) => !f.primary)
             .map((f) => {

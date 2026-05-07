@@ -8,7 +8,7 @@ import { InsightGraphRenderer } from "./insight_graph_renderer";
 export const insightGraphView = {
     type: "insight_graph",
     display_name: "Insight Graph",
-    icon: "fa fa-project-diagram",
+    icon: "fa fa-share-alt",
     multiRecord: true,
     Controller: InsightGraphController,
     Renderer: InsightGraphRenderer,

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
     <t t-name="insight_graph.InsightGraphRenderer">
-        <div class="o_insight_graph_renderer d-flex flex-column h-100">
+        <div class="o_insight_graph_renderer d-flex flex-column flex-grow-1" style="min-height:0">
 
             <!-- Toolbar -->
             <div class="o_insight_toolbar d-flex align-items-center gap-3 px-3 border-bottom bg-white flex-shrink-0" style="height:44px">
@@ -27,8 +27,8 @@
             </div>
 
             <!-- Graph canvas -->
-            <div class="o_insight_graph_body flex-grow-1 position-relative" style="min-height:0">
-                <div t-ref="cytoscapeContainer" class="position-absolute top-0 start-0 end-0 bottom-0"/>
+            <div t-ref="graphBody" class="o_insight_graph_body position-relative">
+                <div t-ref="cytoscapeContainer" style="width:100%;height:100%"/>
                 <NodeTooltip t-if="state.tooltip" info="state.tooltip"/>
             </div>
 

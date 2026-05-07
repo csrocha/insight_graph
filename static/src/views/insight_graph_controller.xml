@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
     <t t-name="insight_graph.InsightGraphController">
-        <div class="o_insight_graph_view d-flex flex-column h-100">
+        <Layout display="props.display" className="'o_insight_graph_view'">
+            <t t-set-slot="layout-actions">
+                <SearchBar t-if="searchBarToggler.state.showSearchBar"/>
+            </t>
+            <t t-set-slot="control-panel-navigation-additional">
+                <t t-component="searchBarToggler.component" t-props="searchBarToggler.props"/>
+            </t>
             <t t-if="state.loading">
-                <div class="d-flex justify-content-center align-items-center flex-grow-1">
+                <div class="d-flex justify-content-center align-items-center h-100">
                     <i class="fa fa-spinner fa-spin fa-3x text-muted"/>
                 </div>
             </t>
@@ -17,6 +23,6 @@
                     onNodeClick.bind="onNodeClick"
                 />
             </t>
-        </div>
+        </Layout>
     </t>
 </templates>
