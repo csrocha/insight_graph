@@ -189,6 +189,20 @@
     &:active {
         cursor: grabbing;
     }
+
+    // Collapsed state: related nodes are hidden — shows "+" inside
+    &.o_insight_ctx_rel_collapsed {
+        border-color: #e67e22;
+        border-style: solid;
+        color: #e67e22;
+        font-size: 13px;
+
+        &:hover {
+            background: #fef3e8;
+            border-color: #d35400;
+            color: #d35400;
+        }
+    }
 }
 
 // ── SVG drag-link line overlay ────────────────────────────────────────────

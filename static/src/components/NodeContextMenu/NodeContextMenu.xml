@@ -26,14 +26,27 @@
                 </button>
             </div>
 
-            <!-- Bottom bar: one draggable circle per relation link -->
+            <!-- Bottom bar: one circle per relation link -->
             <t t-if="props.linkDefs.length">
                 <div class="o_insight_ctx_actions o_insight_ctx_actions_bottom">
                     <t t-foreach="props.linkDefs" t-as="link" t-key="link_index">
-                        <div class="o_insight_ctx_rel_circle"
-                             t-att-title="'Relacionar → ' + link.model"
-                             t-on-mousedown.stop="(e) => props.onStartLink(e, link)">
-                            <span t-esc="modelShortName(link.model)"/>
+                        <!--
+                            Collapsed (+ inside): related node(s) are hidden.
+                              • click  → reveal at nearby position
+                              • drag   → reveal at drop position
+                            Empty (model abbrev): no hidden related nodes.
+                              • drag   → link existing node or create new
+                        -->
+                        <div t-attf-class="o_insight_ctx_rel_circle #{link.isCollapsed ? 'o_insight_ctx_rel_collapsed' : ''}"
+                             t-att-title="circleTitle(link)"
+                             t-on-mousedown.stop="(e) => props.onStartLink(e, link)"
+                             t-on-click.stop="() => this.onCircleClick(link)">
+                            <t t-if="link.isCollapsed">
+                                <i class="fa fa-plus"/>
+                            </t>
+                            <t t-else="">
+                                <span t-esc="circleLabel(link)"/>
+                            </t>
                         </div>
                     </t>
                 </div>

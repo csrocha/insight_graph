@@ -7,11 +7,12 @@ export class NodeContextMenu extends Component {
     static props = {
         // Rendered bounding box of selected node, relative to graphBody container
         pos: Object,       // { x1, y1, w, h }
-        linkDefs: Array,   // [{ field, direction, model }]
+        linkDefs: Array,   // [{ field, direction, model, isCollapsed }]
         onOpenForm: Function,
         onDelete: Function,
         onHide: Function,
-        onStartLink: Function, // (mousedownEvent, linkDef) => void
+        onStartLink: Function, // (mousedownEvent, linkDef) => void — drag
+        onClickLink: Function, // (linkDef) => void — click (only for collapsed circles)
     };
 
     get overlayStyle() {
@@ -19,7 +20,18 @@ export class NodeContextMenu extends Component {
         return `left:${x1}px;top:${y1}px;width:${w}px;height:${h}px;`;
     }
 
-    modelShortName(model) {
-        return model.split(".").pop().substring(0, 3).toUpperCase();
+    circleLabel(link) {
+        const label = link.fieldString || link.model.split(".").pop();
+        return label.substring(0, 3).toUpperCase();
+    }
+
+    circleTitle(link) {
+        const label = link.fieldString || link.model.split(".").pop();
+        return link.isCollapsed ? `Expandir: ${label}` : label;
+    }
+
+    // Click on a relation circle: only acts when collapsed
+    onCircleClick(link) {
+        if (link.isCollapsed) this.props.onClickLink(link);
     }
 }

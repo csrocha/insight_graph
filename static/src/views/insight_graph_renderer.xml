@@ -80,6 +80,7 @@
                     onDelete.bind="onDeleteSelected"
                     onHide.bind="onHideSelected"
                     onStartLink.bind="onStartLink"
+                    onClickLink.bind="onClickLink"
                 />
 
                 <!-- SVG drag line while linking -->

@@ -78,6 +78,20 @@ export class InsightGraphController extends Component {
                 modelConfigs[model] = parser.parse(doc.documentElement);
             }
 
+            // Fetch human-readable field labels for all link fields (parallel RPCs)
+            await Promise.all(
+                Object.entries(modelConfigs).map(async ([model, config]) => {
+                    if (!config?.links?.length) return;
+                    const fieldNames = [...new Set(config.links.map((l) => l.field))];
+                    const fieldsInfo = await this.orm.call(
+                        model, "fields_get", [fieldNames], { attributes: ["string"] }
+                    );
+                    for (const link of config.links) {
+                        link.fieldString = fieldsInfo[link.field]?.string || link.field;
+                    }
+                })
+            );
+
             const primaryConfig = modelConfigs[this.props.resModel];
             if (!primaryConfig) {
                 this.state.error = `No insight_graph view defined for model "${this.props.resModel}".`;
@@ -232,23 +246,53 @@ export class InsightGraphController extends Component {
         await this._loadGraphData();
     }
 
-    onCreateAndLink(sourceNodeData, linkDef) {
-        // Pre-fill back-reference on the new record when the inverse field is known
-        const edgeLeg = this.state.graphData?.edgeLegend.find(
-            (e) => e.sourceModel === sourceNodeData.model && e.sourceField === linkDef.field
-        );
-        const backField = edgeLeg?.targetField;
-        const context = backField ? { [`default_${backField}`]: sourceNodeData.resId } : {};
-
+    async onCreateAndLink(sourceNodeData, linkDef) {
+        const context = await this._buildCreateContext(sourceNodeData, linkDef);
         this.dialogService.add(FormViewDialog, {
             resModel: linkDef.model,
             context,
             onRecordSaved: async (record) => {
-                // Always write the forward link to guarantee the relation exists
                 await this._writeLink(sourceNodeData, record.resId, linkDef);
                 await this._loadGraphData();
             },
         });
+    }
+
+    async _buildCreateContext(sourceNodeData, linkDef) {
+        // 1. Try declared inverse from edgeLegend
+        const edgeLeg = this.state.graphData?.edgeLegend.find(
+            (e) => e.sourceModel === sourceNodeData.model && e.sourceField === linkDef.field
+        );
+        let backField = edgeLeg?.targetField || null;
+
+        // 2. If not declared, auto-discover: look for a m2o on the target model
+        //    pointing back to the source model.
+        if (!backField) {
+            const allFields = await this.orm.call(
+                linkDef.model, "fields_get", [], { attributes: ["type", "relation"] }
+            );
+            for (const [fname, finfo] of Object.entries(allFields)) {
+                if (finfo.type === "many2one" && finfo.relation === sourceNodeData.model) {
+                    backField = fname;
+                    break;
+                }
+            }
+        }
+
+        if (!backField) return {};
+
+        // 3. Fetch type to build the correct ORM default value
+        const fieldsInfo = await this.orm.call(
+            linkDef.model, "fields_get", [[backField]], { attributes: ["type"] }
+        );
+        const fieldType = fieldsInfo[backField]?.type;
+
+        if (fieldType === "many2one") {
+            return { [`default_${backField}`]: sourceNodeData.resId };
+        } else if (fieldType === "many2many") {
+            return { [`default_${backField}`]: [[6, 0, [sourceNodeData.resId]]] };
+        }
+        return {};
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────

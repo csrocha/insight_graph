@@ -32,6 +32,7 @@ export class InsightGraphRenderer extends Component {
             selectedNodeId: null,
             contextMenuPos: null,   // { x1, y1, w, h } rendered px, relative to graphBody
             linkingState: null,     // { linkDef, sourceNodeData, sourceX, sourceY, mouseX, mouseY, hoverNodeId }
+            hiddenNodes: {},        // nodeId → true  (persists within session until page reload)
         });
 
         onMounted(() => {
@@ -101,11 +102,29 @@ export class InsightGraphRenderer extends Component {
         if (!this.state.selectedNodeId || !this.state.contextMenuPos) return null;
         const node = this.props.graphData.nodes.find((n) => n.id === this.state.selectedNodeId);
         if (!node) return null;
-        const linkDefs = this.props.modelConfigs?.[node.model]?.links || [];
+        const rawLinks = this.props.modelConfigs?.[node.model]?.links || [];
+
+        const linkDefs = [];
+        for (const link of rawLinks) {
+            const relatedIds = this._getRelatedNodeIds(node, link);
+            const hiddenIds = relatedIds.filter((id) => this.state.hiddenNodes[id]);
+            const visibleIds = relatedIds.filter((id) => !this.state.hiddenNodes[id]);
+
+            // Suppress circle only for a true M2O situation: exactly one related node,
+            // it is currently visible, and nothing is hidden.
+            // O2M/M2M upstream fields (e.g. provider_ids) have relatedIds.length > 1
+            // and should always keep the circle.
+            const isSingleM2OVisible =
+                relatedIds.length === 1 && visibleIds.length === 1 && hiddenIds.length === 0;
+            if (link.direction === "upstream" && isSingleM2OVisible) continue;
+
+            linkDefs.push({ ...link, isCollapsed: hiddenIds.length > 0 });
+        }
+
         return { pos: this.state.contextMenuPos, nodeData: node, linkDefs };
     }
 
-    // ── Context menu action handlers ────────────────────────────────────────
+    // ── Context menu action handlers ─────────────────────────────────────────
 
     onOpenFormSelected() {
         const info = this.contextMenuInfo;
@@ -121,23 +140,41 @@ export class InsightGraphRenderer extends Component {
         const nodeId = this.state.selectedNodeId;
         if (!nodeId) return;
         this.cy?.getElementById(nodeId).addClass("ig-hidden");
+        this.state.hiddenNodes[nodeId] = true;
         this._selectNode(null);
     }
 
-    // ── Link drag ────────────────────────────────────────────────────────────
+    // ── Relation circle handlers ──────────────────────────────────────────────
 
+    /**
+     * Click on a collapsed circle: reveal hidden related nodes at a nearby position.
+     */
+    onClickLink(linkDef) {
+        const info = this.contextMenuInfo;
+        if (!info || !linkDef.isCollapsed) return;
+        this._revealHiddenNodes(info.nodeData, linkDef, null);
+    }
+
+    /**
+     * Mousedown on a relation circle: start drag.
+     * • Collapsed circle → drag positions a hidden related node at the drop point.
+     * • Empty circle     → drag links an existing node or creates a new one.
+     */
     onStartLink(e, linkDef) {
         e.preventDefault();
         const info = this.contextMenuInfo;
         if (!info) return;
 
+        // Capture in closure — do NOT store in OWL state to avoid proxy-revocation issues
+        const sourceNodeData = info.nodeData;
+        const collapsed = linkDef.isCollapsed;
+
         const rect = this.container.el.getBoundingClientRect();
         const sourceX = info.pos.x1 + info.pos.w / 2;
         const sourceY = info.pos.y1 + info.pos.h / 2;
 
+        // Only UI rendering data goes into reactive state (drives the SVG line)
         this.state.linkingState = {
-            linkDef,
-            sourceNodeData: info.nodeData,
             sourceX,
             sourceY,
             mouseX: e.clientX - rect.left,
@@ -153,28 +190,28 @@ export class InsightGraphRenderer extends Component {
             const x = moveEvent.clientX - r.left;
             const y = moveEvent.clientY - r.top;
 
-            // Detect compatible node under cursor
-            const graphPos = this._renderedToGraph(x, y);
-            let hoverNodeId = null;
-            this.cy?.nodes(`:visible`).forEach((node) => {
-                if (hoverNodeId) return;
-                const bb = node.boundingBox();
-                if (
-                    graphPos.x >= bb.x1 && graphPos.x <= bb.x2 &&
-                    graphPos.y >= bb.y1 && graphPos.y <= bb.y2 &&
-                    node.data().model === linkDef.model
-                ) {
-                    hoverNodeId = node.id();
-                }
-            });
-
-            this.cy?.nodes().removeClass("ig-link-target");
-            if (hoverNodeId) this.cy?.getElementById(hoverNodeId).addClass("ig-link-target");
+            if (!collapsed) {
+                const graphPos = this._renderedToGraph(x, y);
+                let hoverNodeId = null;
+                this.cy?.nodes(":visible").forEach((node) => {
+                    if (hoverNodeId) return;
+                    const bb = node.boundingBox();
+                    if (
+                        graphPos.x >= bb.x1 && graphPos.x <= bb.x2 &&
+                        graphPos.y >= bb.y1 && graphPos.y <= bb.y2 &&
+                        node.data().model === linkDef.model
+                    ) {
+                        hoverNodeId = node.id();
+                    }
+                });
+                this.cy?.nodes().removeClass("ig-link-target");
+                if (hoverNodeId) this.cy?.getElementById(hoverNodeId).addClass("ig-link-target");
+                if (this.state.linkingState) this.state.linkingState.hoverNodeId = hoverNodeId;
+            }
 
             if (this.state.linkingState) {
                 this.state.linkingState.mouseX = x;
                 this.state.linkingState.mouseY = y;
-                this.state.linkingState.hoverNodeId = hoverNodeId;
             }
         };
 
@@ -187,24 +224,30 @@ export class InsightGraphRenderer extends Component {
             this.cy?.nodes().removeClass("ig-link-target");
             if (this.container.el) this.container.el.style.cursor = "";
 
-            const ls = this.state.linkingState;
+            // Read UI state before clearing
+            const mouseX = this.state.linkingState?.mouseX ?? 0;
+            const mouseY = this.state.linkingState?.mouseY ?? 0;
+            const hoverNodeId = this.state.linkingState?.hoverNodeId ?? null;
             this.state.linkingState = null;
-            if (!ls) return;
 
-            if (ls.hoverNodeId) {
-                const targetNodeData = this.props.graphData.nodes.find((n) => n.id === ls.hoverNodeId);
+            const r = this.container.el?.getBoundingClientRect();
+            const overCanvas = r &&
+                upEvent.clientX >= r.left && upEvent.clientX <= r.right &&
+                upEvent.clientY >= r.top && upEvent.clientY <= r.bottom;
+            if (!overCanvas) return;
+
+            const dropGraphPos = this._renderedToGraph(mouseX, mouseY);
+
+            // Use closure variables — avoids OWL proxy issues after state is cleared
+            if (collapsed) {
+                this._revealHiddenNodes(sourceNodeData, linkDef, dropGraphPos);
+            } else if (hoverNodeId) {
+                const targetNodeData = this.props.graphData.nodes.find((n) => n.id === hoverNodeId);
                 if (targetNodeData) {
-                    await this.props.onLinkNodes(ls.sourceNodeData, targetNodeData, ls.linkDef);
+                    await this.props.onLinkNodes(sourceNodeData, targetNodeData, linkDef);
                 }
-            } else if (this.container.el) {
-                // Dropped on background — create new record and link
-                const r = this.container.el.getBoundingClientRect();
-                const overCanvas =
-                    upEvent.clientX >= r.left && upEvent.clientX <= r.right &&
-                    upEvent.clientY >= r.top && upEvent.clientY <= r.bottom;
-                if (overCanvas) {
-                    await this.props.onCreateAndLink(ls.sourceNodeData, ls.linkDef);
-                }
+            } else {
+                await this.props.onCreateAndLink(sourceNodeData, linkDef);
             }
         };
 
@@ -219,6 +262,61 @@ export class InsightGraphRenderer extends Component {
 
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
+    }
+
+    // ── Hidden node helpers ───────────────────────────────────────────────────
+
+    /**
+     * Returns the IDs (Cytoscape node IDs) of nodes that are related to `nodeData`
+     * through `linkDef`, as present in graphData.edges.
+     */
+    _getRelatedNodeIds(nodeData, linkDef) {
+        const { edges } = this.props.graphData;
+        const related = [];
+        for (const edge of edges) {
+            if (edge.relationModel !== nodeData.model || edge.relationField !== linkDef.field) continue;
+            if (linkDef.direction === "downstream" && edge.source === nodeData.id) {
+                related.push(edge.target);
+            } else if (linkDef.direction === "upstream" && edge.target === nodeData.id) {
+                related.push(edge.source);
+            }
+        }
+        return related;
+    }
+
+    /**
+     * Reveals all hidden related nodes for `linkDef`.
+     * @param {Object} nodeData   — selected node data
+     * @param {Object} linkDef    — link definition (with isCollapsed)
+     * @param {Object|null} graphPos — { x, y } in graph coordinates; null → compute nearby
+     */
+    _revealHiddenNodes(nodeData, linkDef, graphPos) {
+        const relatedIds = this._getRelatedNodeIds(nodeData, linkDef);
+        const hiddenIds = relatedIds.filter((id) => this.state.hiddenNodes[id]);
+        if (!hiddenIds.length) return;
+
+        hiddenIds.forEach((id, index) => {
+            const cyNode = this.cy?.getElementById(id);
+            if (!cyNode || cyNode.empty()) return;
+
+            let pos;
+            if (graphPos) {
+                // Drop position with slight stagger for multiple nodes
+                pos = { x: graphPos.x + index * 30, y: graphPos.y + index * 30 };
+            } else {
+                // Click: place nearby the selected node, spread vertically
+                const selNode = this.cy?.getElementById(nodeData.id);
+                const selPos = selNode?.position() || { x: 0, y: 0 };
+                // Downstream links appear to the right, upstream to the left
+                const xOffset = linkDef.direction === "upstream" ? -220 : 220;
+                const yOffset = (index - (hiddenIds.length - 1) / 2) * 90;
+                pos = { x: selPos.x + xOffset, y: selPos.y + yOffset };
+            }
+
+            cyNode.position(pos);
+            cyNode.removeClass("ig-hidden");
+            this.state.hiddenNodes[id] = false;
+        });
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
@@ -337,6 +435,11 @@ export class InsightGraphRenderer extends Component {
             maxZoom: 3,
         });
 
+        // Re-apply hidden state from previous session (survives graph reloads within the same mount)
+        for (const [nodeId, isHidden] of Object.entries(this.state.hiddenNodes)) {
+            if (isHidden) this.cy.getElementById(nodeId).addClass("ig-hidden");
+        }
+
         // Node tap: select / deselect
         this.cy.on("tap", "node", (evt) => {
             const nodeId = evt.target.id();
@@ -391,7 +494,7 @@ export class InsightGraphRenderer extends Component {
                 selector: "node",
                 style: {
                     label: "data(label)",
-                    "text-wrap": "wrap",
+                    "text-wrap": "ellipsis",
                     "text-max-width": "110px",
                     "font-size": "11px",
                     "text-valign": "center",
@@ -403,6 +506,9 @@ export class InsightGraphRenderer extends Component {
                     "background-color": "data(bgColor)",
                     "border-color": "data(borderColor)",
                     color: "data(textColor)",
+                    "transition-property": "border-color, border-width, overlay-opacity, overlay-color, background-color, opacity",
+                    "transition-duration": "150ms",
+                    "transition-timing-function": "ease",
                 },
             },
             {
@@ -439,7 +545,7 @@ export class InsightGraphRenderer extends Component {
                     "overlay-padding": 6,
                 },
             },
-            // Hidden nodes
+            // Hidden nodes (and their edges are also hidden automatically by Cytoscape)
             {
                 selector: "node.ig-hidden",
                 style: { display: "none" },
@@ -453,6 +559,9 @@ export class InsightGraphRenderer extends Component {
                     "target-arrow-shape": "triangle",
                     "curve-style": "bezier",
                     opacity: 0.8,
+                    "transition-property": "opacity, line-color",
+                    "transition-duration": "150ms",
+                    "transition-timing-function": "ease",
                 },
             },
         ];
