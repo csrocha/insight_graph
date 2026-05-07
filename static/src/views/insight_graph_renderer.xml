@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.InsightGraphRenderer">
+        <div class="o_insight_graph_renderer d-flex flex-column h-100">
+
+            <!-- Toolbar -->
+            <div class="o_insight_toolbar d-flex align-items-center gap-3 px-3 border-bottom bg-white flex-shrink-0" style="height:44px">
+                <!-- Legend -->
+                <div class="d-flex gap-2 small">
+                    <span class="badge rounded-pill" style="background:#28a745">complete</span>
+                    <span class="badge rounded-pill" style="background:#ffc107;color:#333">incomplete</span>
+                    <span class="badge rounded-pill" style="background:#6c757d">inactive</span>
+                    <span class="badge rounded-pill" style="background:#dc3545">error</span>
+                </div>
+                <!-- Zoom controls -->
+                <div class="ms-auto d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="onZoomIn" title="Zoom in">
+                        <i class="fa fa-search-plus"/>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="onZoomOut" title="Zoom out">
+                        <i class="fa fa-search-minus"/>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="onFit" title="Fit to screen">
+                        <i class="fa fa-compress"/>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Graph canvas -->
+            <div class="o_insight_graph_body flex-grow-1 position-relative" style="min-height:0">
+                <div t-ref="cytoscapeContainer" class="position-absolute top-0 start-0 end-0 bottom-0"/>
+                <NodeTooltip t-if="state.tooltip" info="state.tooltip"/>
+            </div>
+
+        </div>
+    </t>
+</templates>

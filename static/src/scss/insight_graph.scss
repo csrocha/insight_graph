@@ -1,0 +1,36 @@
+.o_insight_graph_view {
+    background: #f8f9fa;
+}
+
+.o_insight_toolbar {
+    flex-shrink: 0;
+}
+
+.o_insight_graph_body {
+    background: #f8f9fa;
+
+    // Cytoscape sets cursor via JS; keep grab here as a base
+    canvas {
+        cursor: grab;
+
+        &:active {
+            cursor: grabbing;
+        }
+    }
+}
+
+// Tooltip
+.o_insight_tooltip {
+    font-size: 12px;
+    line-height: 1.4;
+
+    .table td {
+        padding: 1px 4px;
+    }
+}
+
+// flow_state badge colors (mirrors FLOW_COLORS in the JS renderer)
+.o_insight_badge_complete   { background-color: #28a745; color: #fff; }
+.o_insight_badge_incomplete { background-color: #ffc107; color: #333; }
+.o_insight_badge_inactive   { background-color: #6c757d; color: #fff; }
+.o_insight_badge_error      { background-color: #dc3545; color: #fff; }

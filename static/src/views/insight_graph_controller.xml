@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.InsightGraphController">
+        <div class="o_insight_graph_view d-flex flex-column h-100">
+            <t t-if="state.loading">
+                <div class="d-flex justify-content-center align-items-center flex-grow-1">
+                    <i class="fa fa-spinner fa-spin fa-3x text-muted"/>
+                </div>
+            </t>
+            <t t-elif="state.error">
+                <div class="alert alert-danger m-4" t-esc="state.error"/>
+            </t>
+            <t t-else="">
+                <InsightGraphRenderer
+                    graphData="state.graphData"
+                    primaryModel="props.resModel"
+                    onNodeClick.bind="onNodeClick"
+                />
+            </t>
+        </div>
+    </t>
+</templates>
