@@ -3,6 +3,7 @@
 import { Component, useState } from "@odoo/owl";
 import { patch } from "@web/core/utils/patch";
 import { SearchBar } from "@web/search/search_bar/search_bar";
+import { SearchBarMenu } from "@web/search/search_bar_menu/search_bar_menu";
 
 export class PinnedNodesMenu extends Component {
     static template = "insight_graph.PinnedNodesMenu";
@@ -26,5 +27,5 @@ export class PinnedNodesMenu extends Component {
     }
 }
 
-// Make PinnedNodesMenu available in the SearchBar template (needed for t-inherit extension).
-SearchBar.components = { ...(SearchBar.components || {}), PinnedNodesMenu };
+// Register PinnedNodesMenu in SearchBarMenu (where the t-inherit extension lives).
+SearchBarMenu.components = { ...(SearchBarMenu.components || {}), PinnedNodesMenu };
