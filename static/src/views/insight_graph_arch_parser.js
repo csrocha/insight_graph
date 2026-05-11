@@ -1,10 +1,28 @@
 /** @odoo-module **/
 
 /**
+ * Extracts field names referenced in a Python boolean expression (heuristic).
+ * Used to ensure those fields are fetched when building node data.
+ */
+function extractInvisibleFields(expr) {
+    if (!expr) return [];
+    const keywords = new Set([
+        "in", "not", "and", "or", "true", "false", "none",
+        "if", "else", "is", "True", "False", "None",
+    ]);
+    return [...expr.matchAll(/\b([a-z][a-z0-9_]*)\b/g)]
+        .map((m) => m[1])
+        .filter((name) => !keywords.has(name));
+}
+
+/**
  * Parses the XML arch of an insight_graph ir.ui.view into a JS config object.
  *
  * Expected arch:
  *   <insight_graph>
+ *       <button name="action_validate" type="object"
+ *           class="oe_highlight" icon="fa-play" title="Validate"
+ *           invisible="state not in ('draft', 'on_error')"/>
  *       <node shape="rectangle">
  *           <field name="display_name" primary="true"/>
  *           <field name="some_status" color="true"/>
@@ -16,11 +34,9 @@
  *
  * Returns:
  *   {
- *       shape: "rectangle",
- *       primaryField: "display_name",
- *       colorField: "some_status",
- *       nodeFields: [{ name, primary, color }],
- *       links: [{ field, direction, model }],
+ *       shape, primaryField, colorField, nodeFields, links,
+ *       buttons: [{ name, type, btnClass, icon, title, invisible }],
+ *       invisibleFields: string[],   // field names referenced in invisible expressions
  *   }
  */
 export class InsightGraphArchParser {
@@ -57,6 +73,33 @@ export class InsightGraphArchParser {
             });
         }
 
-        return { shape, primaryField, colorField, nodeFields, links };
+        // Parse <button> direct children of the root element
+        const buttons = [];
+        const invisibleFieldSet = new Set();
+        for (const child of arch.children) {
+            if (child.tagName.toLowerCase() !== "button") continue;
+            const invisible = child.getAttribute("invisible");
+            buttons.push({
+                name: child.getAttribute("name"),
+                type: child.getAttribute("type") || "object",
+                btnClass: child.getAttribute("class") || "",
+                icon: child.getAttribute("icon") || "",
+                title: child.getAttribute("title") || "",
+                invisible: invisible || null,
+            });
+            for (const f of extractInvisibleFields(invisible || "")) {
+                invisibleFieldSet.add(f);
+            }
+        }
+
+        return {
+            shape,
+            primaryField,
+            colorField,
+            nodeFields,
+            links,
+            buttons,
+            invisibleFields: [...invisibleFieldSet],
+        };
     }
 }

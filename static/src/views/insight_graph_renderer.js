@@ -2,6 +2,7 @@
 
 import { Component, onMounted, onWillUnmount, useExternalListener, useRef, useState } from "@odoo/owl";
 /* global ResizeObserver */
+import { evaluateBooleanExpr } from "@web/core/py_js/py_utils";
 import { NodeTooltip } from "../components/NodeTooltip/NodeTooltip";
 import { NodeContextMenu } from "../components/NodeContextMenu/NodeContextMenu";
 
@@ -9,13 +10,13 @@ export class InsightGraphRenderer extends Component {
     static template = "insight_graph.InsightGraphRenderer";
     static components = { NodeTooltip, NodeContextMenu };
     static LAYOUTS = [
-        { key: "dagre-lr",   label: "Izq → Der",    icon: "fa-long-arrow-right" },
-        { key: "dagre-tb",   label: "Arr → Abj",    icon: "fa-long-arrow-down"  },
-        { key: "circle",     label: "Circular",      icon: "fa-circle-o"         },
-        { key: "concentric", label: "Concéntrico",   icon: "fa-bullseye"         },
-        { key: "breadthfirst",label: "Árbol",        icon: "fa-sitemap"          },
-        { key: "grid",       label: "Grilla",        icon: "fa-th"               },
-        { key: "cose",       label: "Fuerza",        icon: "fa-random"           },
+        { key: "dagre-lr",    label: "Izq → Der",   icon: "fa-long-arrow-right" },
+        { key: "dagre-tb",    label: "Arr → Abj",   icon: "fa-long-arrow-down"  },
+        { key: "circle",      label: "Circular",     icon: "fa-circle-o"         },
+        { key: "concentric",  label: "Concéntrico",  icon: "fa-bullseye"         },
+        { key: "breadthfirst", label: "Árbol",       icon: "fa-sitemap"          },
+        { key: "grid",        label: "Grilla",       icon: "fa-th"               },
+        { key: "cose",        label: "Fuerza",       icon: "fa-random"           },
     ];
     static props = {
         graphData: { type: Object },
@@ -25,6 +26,7 @@ export class InsightGraphRenderer extends Component {
         onDeleteNode: { type: Function },
         onLinkNodes: { type: Function },
         onCreateAndLink: { type: Function },
+        onExecuteAction: { type: Function },
     };
 
     setup() {
@@ -33,12 +35,13 @@ export class InsightGraphRenderer extends Component {
         this.cy = null;
         this._resizeObserver = null;
         this._dragCleanup = null;
+        this._suppressSelectEvents = false;
 
         this.state = useState({
             tooltip: null,
             colorMap: { _default: { bgColor: "#e8f4fd", borderColor: "#4a9eda", textColor: "#1a5276" } },
             edgeColorMap: {},
-            selectedNodeId: null,
+            selectedNodeIds: {},    // nodeId → true/false
             contextMenuPos: null,   // { x1, y1, w, h } rendered px, relative to graphBody
             linkingState: null,     // { linkDef, sourceNodeData, sourceX, sourceY, mouseX, mouseY, hoverNodeId }
             hiddenNodes: {},        // nodeId → true  (persists within session until page reload)
@@ -67,6 +70,48 @@ export class InsightGraphRenderer extends Component {
             if (this.cy) {
                 this.cy.destroy();
                 this.cy = null;
+            }
+        });
+    }
+
+    // ── Selection getters ────────────────────────────────────────────────────
+
+    /** ID of the primary selected node (first in selectedNodeIds), or null. */
+    get selectedNodeId() {
+        return Object.keys(this.state.selectedNodeIds).find(
+            (k) => this.state.selectedNodeIds[k]
+        ) || null;
+    }
+
+    /** Number of currently selected nodes. */
+    get selectionCount() {
+        return Object.values(this.state.selectedNodeIds).filter(Boolean).length;
+    }
+
+    /**
+     * Action buttons visible for the current selection.
+     * Only shown when all selected nodes belong to the same model.
+     * Invisible expressions are evaluated against the primary node's rawFields.
+     */
+    get visibleButtons() {
+        const primaryId = this.selectedNodeId;
+        if (!primaryId) return [];
+        const primaryNode = this.props.graphData.nodes.find((n) => n.id === primaryId);
+        if (!primaryNode) return [];
+
+        // Hide buttons when nodes of different models are selected
+        const allSelected = this.props.graphData.nodes.filter(
+            (n) => this.state.selectedNodeIds[n.id]
+        );
+        if (allSelected.some((n) => n.model !== primaryNode.model)) return [];
+
+        const modelButtons = this.props.modelConfigs?.[primaryNode.model]?.buttons || [];
+        return modelButtons.filter((btn) => {
+            if (!btn.invisible) return true;
+            try {
+                return !evaluateBooleanExpr(btn.invisible, primaryNode.rawFields || {});
+            } catch {
+                return true;
             }
         });
     }
@@ -113,9 +158,10 @@ export class InsightGraphRenderer extends Component {
 
     // ── Context menu info ────────────────────────────────────────────────────
 
+    /** Only non-null when exactly one node is selected (shows per-node overlay). */
     get contextMenuInfo() {
-        if (!this.state.selectedNodeId || !this.state.contextMenuPos) return null;
-        const node = this.props.graphData.nodes.find((n) => n.id === this.state.selectedNodeId);
+        if (this.selectionCount !== 1 || !this.state.contextMenuPos) return null;
+        const node = this.props.graphData.nodes.find((n) => n.id === this.selectedNodeId);
         if (!node) return null;
         const rawLinks = this.props.modelConfigs?.[node.model]?.links || [];
 
@@ -145,46 +191,52 @@ export class InsightGraphRenderer extends Component {
 
     // ── Context menu action handlers ─────────────────────────────────────────
 
-    onOpenFormSelected() {
-        const info = this.contextMenuInfo;
-        if (info) this.props.onOpenForm(info.nodeData);
-    }
-
     onDeleteSelected() {
         const info = this.contextMenuInfo;
         if (info) this.props.onDeleteNode(info.nodeData);
     }
 
     onHideSelected() {
-        const nodeId = this.state.selectedNodeId;
+        const nodeId = this.selectedNodeId;
         if (!nodeId) return;
         this.cy?.getElementById(nodeId).addClass("ig-hidden");
         this.state.hiddenNodes[nodeId] = true;
-        this._selectNode(null);
+        this._selectOnly(null);
+    }
+
+    // ── Selection bar action handlers ────────────────────────────────────────
+
+    /**
+     * Executes the given button action on all selected nodes of the primary model.
+     */
+    onExecuteActionSelected(buttonDef) {
+        const primaryId = this.selectedNodeId;
+        if (!primaryId) return;
+        const primaryNode = this.props.graphData.nodes.find((n) => n.id === primaryId);
+        if (!primaryNode) return;
+        const resIds = this.props.graphData.nodes
+            .filter((n) => this.state.selectedNodeIds[n.id] && n.model === primaryNode.model)
+            .map((n) => n.resId);
+        this.props.onExecuteAction(primaryNode.model, resIds, buttonDef);
+    }
+
+    onClearSelection() {
+        this._selectOnly(null);
     }
 
     // ── Relation circle handlers ──────────────────────────────────────────────
 
-    /**
-     * Click on a collapsed circle: reveal hidden related nodes at a nearby position.
-     */
     onClickLink(linkDef) {
         const info = this.contextMenuInfo;
         if (!info || !linkDef.isCollapsed) return;
         this._revealHiddenNodes(info.nodeData, linkDef, null);
     }
 
-    /**
-     * Mousedown on a relation circle: start drag.
-     * • Collapsed circle → drag positions a hidden related node at the drop point.
-     * • Empty circle     → drag links an existing node or creates a new one.
-     */
     onStartLink(e, linkDef) {
         e.preventDefault();
         const info = this.contextMenuInfo;
         if (!info) return;
 
-        // Capture in closure — do NOT store in OWL state to avoid proxy-revocation issues
         const sourceNodeData = info.nodeData;
         const collapsed = linkDef.isCollapsed;
 
@@ -192,7 +244,6 @@ export class InsightGraphRenderer extends Component {
         const sourceX = info.pos.x1 + info.pos.w / 2;
         const sourceY = info.pos.y1 + info.pos.h / 2;
 
-        // Only UI rendering data goes into reactive state (drives the SVG line)
         this.state.linkingState = {
             sourceX,
             sourceY,
@@ -243,7 +294,6 @@ export class InsightGraphRenderer extends Component {
             this.cy?.nodes().removeClass("ig-link-target");
             if (this.container.el) this.container.el.style.cursor = "";
 
-            // Read UI state before clearing
             const mouseX = this.state.linkingState?.mouseX ?? 0;
             const mouseY = this.state.linkingState?.mouseY ?? 0;
             const hoverNodeId = this.state.linkingState?.hoverNodeId ?? null;
@@ -257,7 +307,6 @@ export class InsightGraphRenderer extends Component {
 
             const dropGraphPos = this._renderedToGraph(mouseX, mouseY);
 
-            // Use closure variables — avoids OWL proxy issues after state is cleared
             if (collapsed) {
                 this._revealHiddenNodes(sourceNodeData, linkDef, dropGraphPos);
             } else if (hoverNodeId) {
@@ -285,12 +334,6 @@ export class InsightGraphRenderer extends Component {
 
     // ── Hidden node helpers ───────────────────────────────────────────────────
 
-    /**
-     * Returns the Cytoscape node IDs of nodes related to `nodeData` through `linkDef`.
-     * Uses the target model for matching rather than edge metadata, because the controller
-     * deduplicates edges by visual direction (src→tgt) and may store metadata from either
-     * side of a bidirectionally-declared relationship.
-     */
     _getRelatedNodeIds(nodeData, linkDef) {
         const { edges, nodes } = this.props.graphData;
         const targetIds = new Set(
@@ -307,12 +350,6 @@ export class InsightGraphRenderer extends Component {
         return related;
     }
 
-    /**
-     * Reveals all hidden related nodes for `linkDef`.
-     * @param {Object} nodeData   — selected node data
-     * @param {Object} linkDef    — link definition (with isCollapsed)
-     * @param {Object|null} graphPos — { x, y } in graph coordinates; null → compute nearby
-     */
     _revealHiddenNodes(nodeData, linkDef, graphPos) {
         const relatedIds = this._getRelatedNodeIds(nodeData, linkDef);
         const hiddenIds = relatedIds.filter((id) => this.state.hiddenNodes[id]);
@@ -324,13 +361,10 @@ export class InsightGraphRenderer extends Component {
 
             let pos;
             if (graphPos) {
-                // Drop position with slight stagger for multiple nodes
                 pos = { x: graphPos.x + index * 30, y: graphPos.y + index * 30 };
             } else {
-                // Click: place nearby the selected node, spread vertically
                 const selNode = this.cy?.getElementById(nodeData.id);
                 const selPos = selNode?.position() || { x: 0, y: 0 };
-                // Downstream links appear to the right, upstream to the left
                 const xOffset = linkDef.direction === "upstream" ? -220 : 220;
                 const yOffset = (index - (hiddenIds.length - 1) / 2) * 90;
                 pos = { x: selPos.x + xOffset, y: selPos.y + yOffset };
@@ -342,27 +376,58 @@ export class InsightGraphRenderer extends Component {
         });
     }
 
-    // ── Internal helpers ─────────────────────────────────────────────────────
+    // ── Selection management ─────────────────────────────────────────────────
 
-    _selectNode(nodeId) {
-        if (this.state.selectedNodeId) {
-            this.cy?.getElementById(this.state.selectedNodeId).removeClass("ig-selected");
-        }
-        this.state.selectedNodeId = nodeId;
+    /**
+     * Clears all selection and selects only nodeId (or clears all if null).
+     * Keeps Cytoscape's internal selection state in sync.
+     */
+    _selectOnly(nodeId) {
+        this._suppressSelectEvents = true;
+        this.cy?.elements().unselect();
+        this._suppressSelectEvents = false;
+
+        this.state.selectedNodeIds = {};
+        this.state.contextMenuPos = null;
+
         if (nodeId) {
+            this._suppressSelectEvents = true;
+            this.cy?.getElementById(nodeId).select();
+            this._suppressSelectEvents = false;
+            this.state.selectedNodeIds[nodeId] = true;
             const nodeData = this.props.graphData.nodes.find((n) => n.id === nodeId);
             console.debug(`[ig:select] nodeId=${nodeId} label="${nodeData?.label}" model=${nodeData?.model}`);
-            this.cy?.getElementById(nodeId).addClass("ig-selected");
             this._updateContextMenuPos();
         } else {
             console.debug("[ig:select] deselected");
+        }
+    }
+
+    /**
+     * Toggles nodeId in/out of the multi-selection.
+     */
+    _toggleSelect(nodeId) {
+        this._suppressSelectEvents = true;
+        if (this.state.selectedNodeIds[nodeId]) {
+            this.cy?.getElementById(nodeId).unselect();
+            this.state.selectedNodeIds[nodeId] = false;
+        } else {
+            this.cy?.getElementById(nodeId).select();
+            this.state.selectedNodeIds[nodeId] = true;
+        }
+        this._suppressSelectEvents = false;
+
+        if (!this.selectedNodeId) {
             this.state.contextMenuPos = null;
+        } else {
+            this._updateContextMenuPos();
         }
     }
 
     _updateContextMenuPos() {
-        if (!this.state.selectedNodeId || !this.cy) return;
-        const nodeEl = this.cy.getElementById(this.state.selectedNodeId);
+        const nodeId = this.selectedNodeId;
+        if (!nodeId || !this.cy) return;
+        const nodeEl = this.cy.getElementById(nodeId);
         if (!nodeEl || nodeEl.empty()) return;
         const bb = nodeEl.renderedBoundingBox();
         this.state.contextMenuPos = {
@@ -459,33 +524,60 @@ export class InsightGraphRenderer extends Component {
             wheelSensitivity: 1,
             minZoom: 0.1,
             maxZoom: 3,
+            boxSelectionEnabled: true,  // shift+drag to multi-select
         });
 
-        // Re-apply hidden state from previous session (survives graph reloads within the same mount)
+        // Re-apply hidden state from previous session
         for (const [nodeId, isHidden] of Object.entries(this.state.hiddenNodes)) {
             if (isHidden) this.cy.getElementById(nodeId).addClass("ig-hidden");
         }
 
-        // Node tap: select / deselect
+        // Single-click: select only this node. Shift+click: toggle.
         this.cy.on("tap", "node", (evt) => {
             const nodeId = evt.target.id();
-            if (this.state.selectedNodeId === nodeId) {
-                this._selectNode(null);
+            if (evt.originalEvent?.shiftKey) {
+                this._toggleSelect(nodeId);
             } else {
-                this._selectNode(nodeId);
+                this._selectOnly(nodeId);
             }
         });
 
-        // Background tap: deselect
+        // Background tap: deselect all
         this.cy.on("tap", (evt) => {
             if (evt.target === this.cy) {
-                this._selectNode(null);
+                this._selectOnly(null);
             }
         });
 
-        // Hover tooltip — suppressed when a node is selected or drag is active
+        // Double-click: open form (replaces the form icon button)
+        this.cy.on("dbltap", "node", (evt) => {
+            const nodeId = evt.target.id();
+            const nodeData = this.props.graphData.nodes.find((n) => n.id === nodeId);
+            if (nodeData) this.props.onOpenForm(nodeData);
+        });
+
+        // Box selection (shift+drag): sync Cytoscape's internal selection to our state
+        this.cy.on("select", "node", (evt) => {
+            if (this._suppressSelectEvents) return;
+            const id = evt.target.id();
+            this.state.selectedNodeIds[id] = true;
+            this._updateContextMenuPos();
+        });
+
+        this.cy.on("unselect", "node", (evt) => {
+            if (this._suppressSelectEvents) return;
+            const id = evt.target.id();
+            this.state.selectedNodeIds[id] = false;
+            if (!this.selectedNodeId) {
+                this.state.contextMenuPos = null;
+            } else {
+                this._updateContextMenuPos();
+            }
+        });
+
+        // Hover tooltip — suppressed when any node is selected or drag is active
         this.cy.on("mouseover", "node", (evt) => {
-            if (this.state.selectedNodeId || this.state.linkingState) return;
+            if (this.selectedNodeId || this.state.linkingState) return;
             this.container.el.style.cursor = "pointer";
             const node = evt.target;
             const pos = node.renderedPosition();
@@ -502,7 +594,7 @@ export class InsightGraphRenderer extends Component {
         });
 
         this.cy.on("mouseout", "node", () => {
-            if (!this.state.selectedNodeId) this.container.el.style.cursor = "";
+            if (!this.selectedNodeId) this.container.el.style.cursor = "";
             this.state.tooltip = null;
         });
 
@@ -549,9 +641,9 @@ export class InsightGraphRenderer extends Component {
             { selector: 'node[shape = "rectangle"]',      style: { shape: "rectangle" } },
             { selector: 'node[shape = "diamond"]',        style: { shape: "diamond", width: "150px", padding: "22px" } },
             { selector: 'node[shape = "ellipse"]',        style: { shape: "ellipse" } },
-            // Selected node
+            // Selected node (uses Cytoscape's :selected pseudo-class)
             {
-                selector: "node.ig-selected",
+                selector: "node:selected",
                 style: {
                     "border-width": 3,
                     "border-color": "#2563eb",
@@ -571,7 +663,7 @@ export class InsightGraphRenderer extends Component {
                     "overlay-padding": 6,
                 },
             },
-            // Hidden nodes (and their edges are also hidden automatically by Cytoscape)
+            // Hidden nodes
             {
                 selector: "node.ig-hidden",
                 style: { display: "none" },
@@ -646,8 +738,9 @@ export class InsightGraphRenderer extends Component {
     }
 
     onZoomToSelected() {
-        if (!this.state.selectedNodeId || !this.cy) return;
-        const node = this.cy.getElementById(this.state.selectedNodeId);
+        const nodeId = this.selectedNodeId;
+        if (!nodeId || !this.cy) return;
+        const node = this.cy.getElementById(nodeId);
         if (!node || node.empty()) return;
         this.cy.animate({ fit: { eles: node, padding: 120 }, duration: 350, easing: "ease-in-out-cubic" });
     }

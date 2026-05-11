@@ -7,13 +7,8 @@
         -->
         <div class="o_insight_ctx_overlay" t-att-style="overlayStyle">
 
-            <!-- Top bar: form / delete / hide icons -->
+            <!-- Top bar: delete / hide (form opens via double-click on node) -->
             <div class="o_insight_ctx_actions o_insight_ctx_actions_top">
-                <button class="o_insight_ctx_btn"
-                        t-on-click.stop="props.onOpenForm"
-                        title="Abrir formulario">
-                    <i class="fa fa-file-text-o"/>
-                </button>
                 <button class="o_insight_ctx_btn o_insight_ctx_btn_danger"
                         t-on-click.stop="props.onDelete"
                         title="Eliminar registro">

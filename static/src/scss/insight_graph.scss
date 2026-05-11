@@ -205,6 +205,67 @@
     }
 }
 
+// ── Selection action bar (Odoo-style) ────────────────────────────────────
+
+.o_insight_selection_bar {
+    min-height: 38px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    background: #eff6ff;
+    border-bottom: 1px solid #bfdbfe;
+    font-size: 13px;
+
+    .o_insight_selection_count {
+        color: #1e40af;
+        white-space: nowrap;
+    }
+
+    .o_insight_sel_clear_btn {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid #93c5fd;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        cursor: pointer;
+        color: #3b82f6;
+        padding: 0;
+        line-height: 1;
+        flex-shrink: 0;
+
+        &:hover {
+            background: #dbeafe;
+            border-color: #3b82f6;
+        }
+    }
+
+    .o_insight_action_btn {
+        border-color: #93c5fd;
+        color: #1d4ed8;
+        background: #fff;
+
+        &:hover {
+            background: #dbeafe;
+            border-color: #3b82f6;
+        }
+
+        // Odoo's oe_highlight class → primary button style
+        &.oe_highlight {
+            background: #2563eb;
+            border-color: #1d4ed8;
+            color: #fff;
+
+            &:hover {
+                background: #1d4ed8;
+                border-color: #1e40af;
+            }
+        }
+    }
+}
+
 // ── Layout selector dropdown ──────────────────────────────────────────────
 
 .o_insight_layout_menu {

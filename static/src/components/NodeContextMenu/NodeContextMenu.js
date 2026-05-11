@@ -8,7 +8,6 @@ export class NodeContextMenu extends Component {
         // Rendered bounding box of selected node, relative to graphBody container
         pos: Object,       // { x1, y1, w, h }
         linkDefs: Array,   // [{ field, direction, model, isCollapsed }]
-        onOpenForm: Function,
         onDelete: Function,
         onHide: Function,
         onStartLink: Function, // (mousedownEvent, linkDef) => void — drag

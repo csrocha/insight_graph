@@ -25,6 +25,7 @@
                     onDeleteNode.bind="onDeleteNode"
                     onLinkNodes.bind="onLinkNodes"
                     onCreateAndLink.bind="onCreateAndLink"
+                    onExecuteAction.bind="onExecuteAction"
                 />
             </t>
         </Layout>

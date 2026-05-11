@@ -247,6 +247,15 @@ export class InsightGraphController extends Component {
         await this._loadGraphData();
     }
 
+    async onExecuteAction(model, resIds, buttonDef) {
+        const result = await this.orm.call(model, buttonDef.name, [resIds]);
+        if (result && typeof result === "object" && result.type) {
+            await this.actionService.doAction(result);
+        } else {
+            await this._loadGraphData();
+        }
+    }
+
     async onCreateAndLink(sourceNodeData, linkDef) {
         const context = await this._buildCreateContext(sourceNodeData, linkDef);
         console.debug(`[ig:action] open create dialog model=${linkDef.model} source=${sourceNodeData.model}#${sourceNodeData.resId} context=${JSON.stringify(context)}`);
@@ -314,6 +323,7 @@ export class InsightGraphController extends Component {
         if (config.colorField) fields.add(config.colorField);
         for (const f of config.nodeFields || []) fields.add(f.name);
         for (const l of config.links || []) fields.add(l.field);
+        for (const f of config.invisibleFields || []) fields.add(f);
         return [...fields];
     }
 
@@ -335,6 +345,25 @@ export class InsightGraphController extends Component {
                 return { name: f.name, value: Array.isArray(val) ? val[1] : String(val ?? "") };
             });
 
+        // Raw field values for button invisible expression evaluation
+        const rawFields = {};
+        const fieldsToStore = new Set([
+            config?.primaryField,
+            config?.colorField,
+            ...(config?.nodeFields || []).map((f) => f.name),
+            ...(config?.invisibleFields || []),
+        ].filter(Boolean));
+        for (const fname of fieldsToStore) {
+            if (fname in rec) {
+                const val = rec[fname];
+                // For many2one [id, "name"] tuples, store the ID for expression evaluation
+                rawFields[fname] = (
+                    Array.isArray(val) && val.length === 2 &&
+                    typeof val[0] === "number" && typeof val[1] === "string"
+                ) ? val[0] : val;
+            }
+        }
+
         return {
             id: this._nodeId(model, rec.id),
             label,
@@ -344,6 +373,7 @@ export class InsightGraphController extends Component {
             flowState,
             isPrimary,
             tooltipFields,
+            rawFields,
         };
     }
 
