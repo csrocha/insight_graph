@@ -1,6 +1,7 @@
 /** @odoo-module **/
 
 import { Component, onWillStart, onWillUpdateProps, useState } from "@odoo/owl";
+import { evaluateBooleanExpr } from "@web/core/py_js/py_utils";
 import { useService } from "@web/core/utils/hooks";
 import { Layout } from "@web/search/layout";
 import { SearchBar } from "@web/search/search_bar/search_bar";
@@ -431,14 +432,9 @@ export class InsightGraphController extends Component {
         const label = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
         const flowState = colorFieldName ? (rec[colorFieldName] || null) : null;
 
-        const tooltipFields = (config?.nodeFields || [])
-            .filter((f) => !f.primary)
-            .map((f) => {
-                const val = rec[f.name];
-                return { name: f.name, value: Array.isArray(val) ? val[1] : String(val ?? "") };
-            });
-
-        // Raw field values for button invisible evaluation AND pin edge detection
+        // Raw field values for button/field invisible evaluation AND pin edge detection.
+        // Must be computed before tooltipFields so computable invisible expressions can
+        // be evaluated against this record's data.
         const rawFields = {};
         const fieldsToStore = new Set([
             config?.primaryField,
@@ -457,6 +453,21 @@ export class InsightGraphController extends Component {
                 ) ? val[0] : val;
             }
         }
+
+        const tooltipFields = (config?.nodeFields || [])
+            .filter((f) => !f.primary)
+            .filter((f) => {
+                if (!f.invisible) return true;
+                try {
+                    return !evaluateBooleanExpr(f.invisible, rawFields);
+                } catch {
+                    return true;
+                }
+            })
+            .map((f) => {
+                const val = rec[f.name];
+                return { name: f.name, value: Array.isArray(val) ? val[1] : String(val ?? "") };
+            });
 
         return {
             id: this._nodeId(model, rec.id),
