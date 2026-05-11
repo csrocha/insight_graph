@@ -161,6 +161,19 @@
         border-color: #ef4444;
         color: #dc2626;
     }
+
+    // Active pin state — amber
+    &.o_insight_ctx_btn_pinned {
+        background: #fef3c7;
+        border-color: #f59e0b;
+        color: #b45309;
+
+        &:hover {
+            background: #fde68a;
+            border-color: #d97706;
+            color: #92400e;
+        }
+    }
 }
 
 // Draggable relation circle — one per link definition

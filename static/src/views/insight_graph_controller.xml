@@ -26,6 +26,8 @@
                     onLinkNodes.bind="onLinkNodes"
                     onCreateAndLink.bind="onCreateAndLink"
                     onExecuteAction.bind="onExecuteAction"
+                    onPinNode.bind="onPinNode"
+                    onUnpinNode.bind="onUnpinNode"
                 />
             </t>
         </Layout>

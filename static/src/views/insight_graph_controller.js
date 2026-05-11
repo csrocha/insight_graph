@@ -9,6 +9,7 @@ import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_d
 import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
 import { InsightGraphArchParser } from "./insight_graph_arch_parser";
 import { InsightGraphRenderer } from "./insight_graph_renderer";
+import { getPins, pinNode, unpinNode } from "../utils/insight_graph_pins";
 
 export class InsightGraphController extends Component {
     static template = "insight_graph.InsightGraphController";
@@ -180,6 +181,88 @@ export class InsightGraphController extends Component {
                 }
             }
 
+            // ── Pin injection ────────────────────────────────────────────────
+            // Pinned nodes always appear in every graph so the user can see
+            // whether (and how) a cross-view reference connects to this view.
+            // Nodes already loaded by BFS are just marked; missing ones are fetched
+            // and connected to whatever is already in the graph.
+            const pins = getPins();
+            if (pins.length) {
+                // Group missing pins by model for batched RPC
+                const toFetch = new Map(); // model → [pin, ...]
+                for (const pin of pins) {
+                    const pinKey = `${pin.model}::${pin.resId}`;
+                    if (visited.has(pinKey)) {
+                        const existingNode = nodes.find((n) => n.id === visited.get(pinKey));
+                        if (existingNode) existingNode.isPinned = true;
+                    } else {
+                        if (!modelConfigs[pin.model]) continue;
+                        if (!toFetch.has(pin.model)) toFetch.set(pin.model, []);
+                        toFetch.get(pin.model).push(pin);
+                    }
+                }
+
+                for (const [model, modelPins] of toFetch) {
+                    const config = modelConfigs[model];
+                    const fields = this._getNeededFields(config);
+                    let records;
+                    try {
+                        records = await this.orm.read(model, modelPins.map((p) => p.resId), fields);
+                    } catch { continue; }
+
+                    for (const rec of records) {
+                        const pin = modelPins.find((p) => p.resId === rec.id);
+                        if (!pin) continue;
+                        const pinNode = this._makeNode(rec, model, config, false);
+                        pinNode.isPinned = true;
+                        nodes.push(pinNode);
+                        const pinKey = `${model}::${rec.id}`;
+                        visited.set(pinKey, pinNode.id);
+
+                        // Edges via pin's own link fields (both directions)
+                        for (const link of config.links || []) {
+                            const relatedIds = this._extractIds(rec[link.field]);
+                            for (const relId of relatedIds) {
+                                const relNodeId = visited.get(`${link.model}::${relId}`);
+                                if (!relNodeId) continue;
+                                const [src, tgt] = link.direction === "upstream"
+                                    ? [relNodeId, pinNode.id]
+                                    : [pinNode.id, relNodeId];
+                                const eKey = `${src}→${tgt}`;
+                                if (!edgeSet.has(eKey)) {
+                                    edgeSet.add(eKey);
+                                    edges.push({ source: src, target: tgt, relationModel: model, relationField: link.field });
+                                }
+                            }
+                        }
+
+                        // Edges from existing graph nodes that reference the pin
+                        // (handles links declared only from the other side)
+                        for (const existingNode of nodes) {
+                            if (existingNode.id === pinNode.id) continue;
+                            const exConfig = modelConfigs[existingNode.model];
+                            if (!exConfig) continue;
+                            for (const link of exConfig.links || []) {
+                                if (link.model !== model) continue;
+                                const fieldVal = existingNode.rawFields?.[link.field];
+                                const refs = typeof fieldVal === "number"
+                                    ? [fieldVal]
+                                    : Array.isArray(fieldVal) ? fieldVal : [];
+                                if (!refs.includes(rec.id)) continue;
+                                const [src, tgt] = link.direction === "upstream"
+                                    ? [pinNode.id, existingNode.id]
+                                    : [existingNode.id, pinNode.id];
+                                const eKey = `${src}→${tgt}`;
+                                if (!edgeSet.has(eKey)) {
+                                    edgeSet.add(eKey);
+                                    edges.push({ source: src, target: tgt, relationModel: existingNode.model, relationField: link.field });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             const uniqueModels = [...new Set(nodes.map((n) => n.model))];
             const nodeLegend = uniqueModels.map((model) => ({
                 model,
@@ -244,6 +327,16 @@ export class InsightGraphController extends Component {
 
     async onLinkNodes(sourceNodeData, targetNodeData, linkDef) {
         await this._writeLink(sourceNodeData, targetNodeData.resId, linkDef);
+        await this._loadGraphData();
+    }
+
+    async onPinNode(nodeData) {
+        pinNode(nodeData.model, nodeData.resId, nodeData.label);
+        await this._loadGraphData();
+    }
+
+    async onUnpinNode(nodeData) {
+        unpinNode(nodeData.model, nodeData.resId);
         await this._loadGraphData();
     }
 
@@ -345,13 +438,14 @@ export class InsightGraphController extends Component {
                 return { name: f.name, value: Array.isArray(val) ? val[1] : String(val ?? "") };
             });
 
-        // Raw field values for button invisible expression evaluation
+        // Raw field values for button invisible evaluation AND pin edge detection
         const rawFields = {};
         const fieldsToStore = new Set([
             config?.primaryField,
             config?.colorField,
             ...(config?.nodeFields || []).map((f) => f.name),
             ...(config?.invisibleFields || []),
+            ...(config?.links || []).map((l) => l.field),  // needed to detect pin edges
         ].filter(Boolean));
         for (const fname of fieldsToStore) {
             if (fname in rec) {

@@ -27,6 +27,8 @@ export class InsightGraphRenderer extends Component {
         onLinkNodes: { type: Function },
         onCreateAndLink: { type: Function },
         onExecuteAction: { type: Function },
+        onPinNode: { type: Function },
+        onUnpinNode: { type: Function },
     };
 
     setup() {
@@ -42,6 +44,7 @@ export class InsightGraphRenderer extends Component {
             colorMap: { _default: { bgColor: "#e8f4fd", borderColor: "#4a9eda", textColor: "#1a5276" } },
             edgeColorMap: {},
             selectedNodeIds: {},    // nodeId → true/false
+            pinnedNodeIds: {},      // nodeId → true  (loaded from localStorage on mount)
             contextMenuPos: null,   // { x1, y1, w, h } rendered px, relative to graphBody
             linkingState: null,     // { linkDef, sourceNodeData, sourceX, sourceY, mouseX, mouseY, hoverNodeId }
             hiddenNodes: {},        // nodeId → true  (persists within session until page reload)
@@ -56,6 +59,7 @@ export class InsightGraphRenderer extends Component {
         onMounted(() => {
             this._fitBodyHeight();
             this._initCytoscape();
+            this._syncPinsFromStorage();
             this._resizeObserver = new ResizeObserver(() => {
                 this._fitBodyHeight();
                 this.cy?.resize();
@@ -114,6 +118,11 @@ export class InsightGraphRenderer extends Component {
                 return true;
             }
         });
+    }
+
+    /** Whether the currently selected node is pinned. */
+    get isSelectedNodePinned() {
+        return !!this.state.pinnedNodeIds[this.selectedNodeId];
     }
 
     // ── Legend getters ───────────────────────────────────────────────────────
@@ -222,6 +231,32 @@ export class InsightGraphRenderer extends Component {
 
     onClearSelection() {
         this._selectOnly(null);
+    }
+
+    // ── Pin handlers ─────────────────────────────────────────────────────────
+
+    onPinSelected() {
+        const info = this.contextMenuInfo;
+        if (info) this.props.onPinNode(info.nodeData);
+    }
+
+    onUnpinSelected() {
+        const info = this.contextMenuInfo;
+        if (info) this.props.onUnpinNode(info.nodeData);
+    }
+
+    /**
+     * Applies visual pin state to Cytoscape nodes based on the `isPinned` flag
+     * set by the controller (which injects/marks pins after BFS).
+     * Called on every mount so injected pins are always highlighted on load.
+     */
+    _syncPinsFromStorage() {
+        for (const node of this.props.graphData.nodes) {
+            if (node.isPinned) {
+                this.state.pinnedNodeIds[node.id] = true;
+                this.cy?.getElementById(node.id).addClass("ig-pinned");
+            }
+        }
     }
 
     // ── Relation circle handlers ──────────────────────────────────────────────
@@ -650,6 +685,17 @@ export class InsightGraphRenderer extends Component {
                     "overlay-opacity": 0.12,
                     "overlay-color": "#2563eb",
                     "overlay-padding": 6,
+                },
+            },
+            // Pinned node — amber border on unselected state
+            {
+                selector: "node.ig-pinned:unselected",
+                style: {
+                    "border-color": "#f59e0b",
+                    "border-width": 4,
+                    "overlay-opacity": 0.06,
+                    "overlay-color": "#f59e0b",
+                    "overlay-padding": 4,
                 },
             },
             // Link drop target highlight

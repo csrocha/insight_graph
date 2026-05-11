@@ -139,8 +139,11 @@
                 <NodeContextMenu t-if="contextMenuInfo"
                     pos="contextMenuInfo.pos"
                     linkDefs="contextMenuInfo.linkDefs"
+                    isPinned="isSelectedNodePinned"
                     onDelete.bind="onDeleteSelected"
                     onHide.bind="onHideSelected"
+                    onPin.bind="onPinSelected"
+                    onUnpin.bind="onUnpinSelected"
                     onStartLink.bind="onStartLink"
                     onClickLink.bind="onClickLink"
                 />

@@ -6,10 +6,13 @@ export class NodeContextMenu extends Component {
     static template = "insight_graph.NodeContextMenu";
     static props = {
         // Rendered bounding box of selected node, relative to graphBody container
-        pos: Object,       // { x1, y1, w, h }
-        linkDefs: Array,   // [{ field, direction, model, isCollapsed }]
+        pos: Object,        // { x1, y1, w, h }
+        linkDefs: Array,    // [{ field, direction, model, isCollapsed }]
+        isPinned: Boolean,
         onDelete: Function,
         onHide: Function,
+        onPin: Function,
+        onUnpin: Function,
         onStartLink: Function, // (mousedownEvent, linkDef) => void — drag
         onClickLink: Function, // (linkDef) => void — click (only for collapsed circles)
     };

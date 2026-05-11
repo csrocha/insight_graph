@@ -7,7 +7,7 @@
         -->
         <div class="o_insight_ctx_overlay" t-att-style="overlayStyle">
 
-            <!-- Top bar: delete / hide (form opens via double-click on node) -->
+            <!-- Top bar: delete / hide / pin (form opens via double-click on node) -->
             <div class="o_insight_ctx_actions o_insight_ctx_actions_top">
                 <button class="o_insight_ctx_btn o_insight_ctx_btn_danger"
                         t-on-click.stop="props.onDelete"
@@ -18,6 +18,11 @@
                         t-on-click.stop="props.onHide"
                         title="Ocultar del grafo">
                     <i class="fa fa-eye-slash"/>
+                </button>
+                <button t-attf-class="o_insight_ctx_btn #{props.isPinned ? 'o_insight_ctx_btn_pinned' : ''}"
+                        t-on-click.stop="props.isPinned ? props.onUnpin : props.onPin"
+                        t-att-title="props.isPinned ? 'Desanclar nodo' : 'Anclar como referencia'">
+                    <i class="fa fa-thumb-tack"/>
                 </button>
             </div>
 
