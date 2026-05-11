@@ -6,11 +6,13 @@
  */
 function extractInvisibleFields(expr) {
     if (!expr) return [];
+    // Strip quoted string literals so values like 'draft' aren't mistaken for field names
+    const stripped = expr.replace(/'[^']*'/g, "").replace(/"[^"]*"/g, "");
     const keywords = new Set([
         "in", "not", "and", "or", "true", "false", "none",
         "if", "else", "is", "True", "False", "None",
     ]);
-    return [...expr.matchAll(/\b([a-z][a-z0-9_]*)\b/g)]
+    return [...stripped.matchAll(/\b([a-z][a-z0-9_]*)\b/g)]
         .map((m) => m[1])
         .filter((name) => !keywords.has(name));
 }
