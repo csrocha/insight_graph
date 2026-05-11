@@ -1,6 +1,6 @@
 /** @odoo-module **/
 
-import { Component, onWillStart, onWillUpdateProps, useState } from "@odoo/owl";
+import { Component, onWillStart, onWillUpdateProps, useState, useSubEnv } from "@odoo/owl";
 import { evaluateBooleanExpr } from "@web/core/py_js/py_utils";
 import { useService } from "@web/core/utils/hooks";
 import { Layout } from "@web/search/layout";
@@ -52,6 +52,19 @@ export class InsightGraphController extends Component {
             error: null,
             graphData: null,
             modelConfigs: {},
+            selectionInfo: null,  // { count, buttons, selectedNodes } — populated by renderer
+        });
+        // Non-reactive: function refs provided by renderer on each selection change.
+        this._selectionClear = null;
+        this._selectionAction = null;
+        this._selectionHide = null;
+        this._rendererActions = null;  // { centerOnNode: (nodeId) => void }
+
+        // Provide reactive state and centering callback to descendant components
+        // (PinnedNodesMenu lives inside SearchBar which is a descendant via slots).
+        useSubEnv({
+            igControllerState: this.state,
+            igCenterOnNode: (nodeId) => this._rendererActions?.centerOnNode(nodeId),
         });
 
         onWillStart(() => this._loadGraphData());
@@ -339,6 +352,60 @@ export class InsightGraphController extends Component {
     async onUnpinNode(nodeData) {
         unpinNode(nodeData.model, nodeData.resId);
         await this._loadGraphData();
+    }
+
+    // ── Selection bar (notified by renderer, rendered in layout-actions slot) ──
+
+    onSelectionChange(count, buttons, selectedNodes, onClear, onAction, onHide) {
+        this.state.selectionInfo = count > 0 ? { count, buttons, selectedNodes } : null;
+        this._selectionClear = onClear;
+        this._selectionAction = onAction;
+        this._selectionHide = onHide;
+    }
+
+    onSelectionBarClear() {
+        this._selectionClear?.();
+    }
+
+    onSelectionBarAction(btn) {
+        this._selectionAction?.(btn);
+    }
+
+    onHideSelectedNodes() {
+        this._selectionHide?.();
+    }
+
+    // ── Renderer actions (centering, etc.) ───────────────────────────────────
+
+    onRendererReady(actions) {
+        this._rendererActions = actions;
+    }
+
+    async onPinSelectedNodes() {
+        const nodes = this.state.selectionInfo?.selectedNodes;
+        if (!nodes?.length) return;
+        for (const node of nodes) {
+            pinNode(node.model, node.resId, node.label);
+        }
+        await this._loadGraphData();
+    }
+
+    async onDeleteSelectedNodes() {
+        const nodes = this.state.selectionInfo?.selectedNodes;
+        if (!nodes?.length) return;
+        const byModel = {};
+        for (const node of nodes) (byModel[node.model] ||= []).push(node.resId);
+        const count = nodes.length;
+        this.dialogService.add(ConfirmationDialog, {
+            title: "Eliminar registros",
+            body: `¿Eliminar ${count} registro${count > 1 ? "s" : ""}? Esta acción no se puede deshacer.`,
+            confirm: async () => {
+                await Promise.all(
+                    Object.entries(byModel).map(([model, ids]) => this.orm.unlink(model, ids))
+                );
+                await this._loadGraphData();
+            },
+        });
     }
 
     async onExecuteAction(model, resIds, buttonDef) {

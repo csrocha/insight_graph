@@ -97,36 +97,6 @@
                 </div>
             </div>
 
-            <!-- Selection action bar (Odoo-style, appears when nodes are selected) -->
-            <t t-if="selectionCount > 0">
-                <div class="o_insight_selection_bar d-flex align-items-center gap-2 px-3 flex-shrink-0">
-                    <!-- Count + deselect -->
-                    <span class="o_insight_selection_count">
-                        <strong><t t-esc="selectionCount"/></strong>
-                        <t t-if="selectionCount === 1"> seleccionado</t>
-                        <t t-else=""> seleccionados</t>
-                    </span>
-                    <button class="o_insight_sel_clear_btn"
-                            t-on-click="onClearSelection"
-                            title="Deseleccionar todo">
-                        <i class="fa fa-times"/>
-                    </button>
-
-                    <!-- Action buttons (from XML <button> definitions) -->
-                    <t t-if="visibleButtons.length">
-                        <div class="o_insight_legend_sep"/>
-                        <t t-foreach="visibleButtons" t-as="btn" t-key="btn_index">
-                            <button t-attf-class="btn btn-sm o_insight_action_btn #{btn.btnClass}"
-                                    t-att-title="btn.title"
-                                    t-on-click.stop="() => this.onExecuteActionSelected(btn)">
-                                <i t-if="btn.icon" t-attf-class="fa #{btn.icon} me-1"/>
-                                <t t-esc="btn.title"/>
-                            </button>
-                        </t>
-                    </t>
-                </div>
-            </t>
-
             <!-- Graph canvas + overlays -->
             <div t-ref="graphBody" class="o_insight_graph_body position-relative">
                 <div t-ref="cytoscapeContainer" style="width:100%;height:100%"/>
@@ -139,11 +109,6 @@
                 <NodeContextMenu t-if="contextMenuInfo"
                     pos="contextMenuInfo.pos"
                     linkDefs="contextMenuInfo.linkDefs"
-                    isPinned="isSelectedNodePinned"
-                    onDelete.bind="onDeleteSelected"
-                    onHide.bind="onHideSelected"
-                    onPin.bind="onPinSelected"
-                    onUnpin.bind="onUnpinSelected"
                     onStartLink.bind="onStartLink"
                     onClickLink.bind="onClickLink"
                 />

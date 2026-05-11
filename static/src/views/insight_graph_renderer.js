@@ -1,5 +1,8 @@
 /** @odoo-module **/
 
+// Persists the Cytoscape viewport across unmount/remount cycles (e.g. after an action refresh).
+let _savedViewport = null;
+
 import { Component, onMounted, onWillUnmount, useExternalListener, useRef, useState } from "@odoo/owl";
 /* global ResizeObserver */
 import { evaluateBooleanExpr } from "@web/core/py_js/py_utils";
@@ -29,6 +32,8 @@ export class InsightGraphRenderer extends Component {
         onExecuteAction: { type: Function },
         onPinNode: { type: Function },
         onUnpinNode: { type: Function },
+        onSelectionChange: { type: Function, optional: true },
+        onRendererReady: { type: Function, optional: true },
     };
 
     setup() {
@@ -59,16 +64,26 @@ export class InsightGraphRenderer extends Component {
         onMounted(() => {
             this._fitBodyHeight();
             this._initCytoscape();
+            if (_savedViewport) {
+                this.cy.pan(_savedViewport.pan);
+                this.cy.zoom(_savedViewport.zoom);
+                _savedViewport = null;
+            } else {
+                this.cy.fit(undefined, 40);
+            }
             this._syncPinsFromStorage();
+            this.props.onRendererReady?.({ centerOnNode: (id) => this._centerOnNode(id) });
             this._resizeObserver = new ResizeObserver(() => {
                 this._fitBodyHeight();
                 this.cy?.resize();
-                this.cy?.fit(undefined, 40);
                 this._updateContextMenuPos();
             });
             this._resizeObserver.observe(this.graphBody.el.parentElement);
         });
         onWillUnmount(() => {
+            if (this.cy) {
+                _savedViewport = { pan: this.cy.pan(), zoom: this.cy.zoom() };
+            }
             this._dragCleanup?.();
             this._resizeObserver?.disconnect();
             if (this.cy) {
@@ -118,11 +133,6 @@ export class InsightGraphRenderer extends Component {
                 return true;
             }
         });
-    }
-
-    /** Whether the currently selected node is pinned. */
-    get isSelectedNodePinned() {
-        return !!this.state.pinnedNodeIds[this.selectedNodeId];
     }
 
     // ── Legend getters ───────────────────────────────────────────────────────
@@ -198,21 +208,6 @@ export class InsightGraphRenderer extends Component {
         return { pos: this.state.contextMenuPos, nodeData: node, linkDefs };
     }
 
-    // ── Context menu action handlers ─────────────────────────────────────────
-
-    onDeleteSelected() {
-        const info = this.contextMenuInfo;
-        if (info) this.props.onDeleteNode(info.nodeData);
-    }
-
-    onHideSelected() {
-        const nodeId = this.selectedNodeId;
-        if (!nodeId) return;
-        this.cy?.getElementById(nodeId).addClass("ig-hidden");
-        this.state.hiddenNodes[nodeId] = true;
-        this._selectOnly(null);
-    }
-
     // ── Selection bar action handlers ────────────────────────────────────────
 
     /**
@@ -231,18 +226,6 @@ export class InsightGraphRenderer extends Component {
 
     onClearSelection() {
         this._selectOnly(null);
-    }
-
-    // ── Pin handlers ─────────────────────────────────────────────────────────
-
-    onPinSelected() {
-        const info = this.contextMenuInfo;
-        if (info) this.props.onPinNode(info.nodeData);
-    }
-
-    onUnpinSelected() {
-        const info = this.contextMenuInfo;
-        if (info) this.props.onUnpinNode(info.nodeData);
     }
 
     /**
@@ -413,6 +396,27 @@ export class InsightGraphRenderer extends Component {
 
     // ── Selection management ─────────────────────────────────────────────────
 
+    _notifySelectionChange() {
+        const selectedNodes = this.props.graphData.nodes
+            .filter((n) => this.state.selectedNodeIds[n.id])
+            .map((n) => ({ model: n.model, resId: n.resId, id: n.id, label: n.label }));
+
+        this.props.onSelectionChange?.(
+            this.selectionCount,
+            this.visibleButtons,
+            selectedNodes,
+            () => this._selectOnly(null),
+            (btn) => this.onExecuteActionSelected(btn),
+            () => {
+                for (const { id } of selectedNodes) {
+                    this.cy?.getElementById(id).addClass("ig-hidden");
+                    this.state.hiddenNodes[id] = true;
+                }
+                this._selectOnly(null);
+            },
+        );
+    }
+
     /**
      * Clears all selection and selects only nodeId (or clears all if null).
      * Keeps Cytoscape's internal selection state in sync.
@@ -436,6 +440,7 @@ export class InsightGraphRenderer extends Component {
         } else {
             console.debug("[ig:select] deselected");
         }
+        this._notifySelectionChange();
     }
 
     /**
@@ -555,6 +560,7 @@ export class InsightGraphRenderer extends Component {
                 rankSep: 100,
                 padding: 40,
                 animate: false,
+                fit: false,
             },
             wheelSensitivity: 1,
             minZoom: 0.1,
@@ -567,14 +573,12 @@ export class InsightGraphRenderer extends Component {
             if (isHidden) this.cy.getElementById(nodeId).addClass("ig-hidden");
         }
 
-        // Single-click: select only this node. Shift+click: toggle.
+        // Single-click: select only this node.
+        // Shift+click: Cytoscape handles additive selection natively; select/unselect
+        // listeners below keep our state in sync.
         this.cy.on("tap", "node", (evt) => {
-            const nodeId = evt.target.id();
-            if (evt.originalEvent?.shiftKey) {
-                this._toggleSelect(nodeId);
-            } else {
-                this._selectOnly(nodeId);
-            }
+            if (evt.originalEvent?.shiftKey) return;
+            this._selectOnly(evt.target.id());
         });
 
         // Background tap: deselect all
@@ -591,12 +595,13 @@ export class InsightGraphRenderer extends Component {
             if (nodeData) this.props.onOpenForm(nodeData);
         });
 
-        // Box selection (shift+drag): sync Cytoscape's internal selection to our state
+        // Box selection (shift+drag) and shift+click: sync Cytoscape's native selection to our state
         this.cy.on("select", "node", (evt) => {
             if (this._suppressSelectEvents) return;
             const id = evt.target.id();
             this.state.selectedNodeIds[id] = true;
             this._updateContextMenuPos();
+            this._notifySelectionChange();
         });
 
         this.cy.on("unselect", "node", (evt) => {
@@ -608,6 +613,7 @@ export class InsightGraphRenderer extends Component {
             } else {
                 this._updateContextMenuPos();
             }
+            this._notifySelectionChange();
         });
 
         // Hover tooltip — suppressed when any node is selected or drag is active
@@ -799,6 +805,22 @@ export class InsightGraphRenderer extends Component {
     }
     onFit() {
         this.cy?.fit(undefined, 40);
+    }
+
+    _centerOnNode(nodeId) {
+        if (!this.cy) return;
+        const node = this.cy.getElementById(nodeId);
+        if (!node || node.empty()) return;
+        const pos = node.position();
+        const zoom = this.cy.zoom();
+        this.cy.animate({
+            pan: {
+                x: this.cy.width() / 2 - pos.x * zoom,
+                y: this.cy.height() / 2 - pos.y * zoom,
+            },
+            duration: 350,
+            easing: "ease-in-out-cubic",
+        });
     }
 
     _center() {
