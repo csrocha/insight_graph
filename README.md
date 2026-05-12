@@ -1,4 +1,4 @@
-# insight_graph — Interactive DAG Graph View for Odoo
+# Insight graph — Interactive DAG Graph View for Odoo
 
 > **Versión en castellano más abajo / Spanish version below**
 
