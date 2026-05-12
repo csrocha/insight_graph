@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.NodeTooltip">
+        <div class="o_insight_tooltip position-absolute bg-white border rounded shadow-sm p-2"
+             t-attf-style="left:{{ props.info.x }}px; top:{{ props.info.y }}px; min-width:160px; max-width:260px; z-index:1000; pointer-events:none;">
+            <div class="fw-semibold mb-1 text-truncate" t-esc="props.info.label"/>
+            <t t-if="props.info.flowState">
+                <span t-attf-class="badge mb-1 o_insight_badge_{{ props.info.flowState }}"
+                      t-esc="props.info.flowState"/>
+            </t>
+            <t t-if="props.info.fields and props.info.fields.length">
+                <table class="table table-sm table-borderless mb-0 mt-1" style="font-size:11px">
+                    <t t-foreach="props.info.fields" t-as="f" t-key="f.name">
+                        <tr>
+                            <td class="text-muted pe-2 text-nowrap" t-esc="f.name"/>
+                            <td t-esc="f.value"/>
+                        </tr>
+                    </t>
+                </table>
+            </t>
+        </div>
+    </t>
+</templates>

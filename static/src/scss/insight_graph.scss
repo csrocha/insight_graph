@@ -1,0 +1,314 @@
+// Default node colors — override in your module's SCSS by redefining
+// --o-insight-state-{value}-{bg|border|text} inside .o_insight_graph_view.
+.o_insight_graph_view {
+    background: #f8f9fa;
+
+    --o-insight-state-default-bg:     #e8f4fd;
+    --o-insight-state-default-border: #4a9eda;
+    --o-insight-state-default-text:   #1a5276;
+}
+
+.o_insight_toolbar {
+    flex-shrink: 0;
+}
+
+.o_insight_legend_title {
+    font-size: 11px;
+    color: #6c757d;
+    white-space: nowrap;
+}
+
+// Vertical separator between legend sections
+.o_insight_legend_sep {
+    width: 1px;
+    height: 20px;
+    background: #dee2e6;
+    align-self: center;
+    flex-shrink: 0;
+}
+
+// Mini node shape icons for the node legend
+.o_insight_shape_icon {
+    display: inline-block;
+    width: 22px;
+    height: 14px;
+    border: 1.5px solid #4a9eda;
+    background: #e8f4fd;
+    vertical-align: middle;
+    flex-shrink: 0;
+
+    &.o_insight_shape_rectangle      { border-radius: 0; }
+    &.o_insight_shape_roundrectangle { border-radius: 4px; }
+    &.o_insight_shape_ellipse        { border-radius: 50%; }
+    &.o_insight_shape_diamond {
+        width: 12px;
+        height: 12px;
+        transform: rotate(45deg);
+        margin: 0 6px;
+    }
+    &.o_insight_shape_primary {
+        border-width: 2.5px;
+        font-weight: bold;
+    }
+}
+
+// Monospace pill for edge/relation labels — left border carries the relation color
+.o_insight_edge_label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: nowrap;
+    background: #f0f4f8;
+    border: 1px solid #d0dae4;
+    border-left: 3px solid #adb5bd; // overridden inline per relation
+    border-radius: 3px;
+    padding: 1px 6px 1px 5px;
+    color: #2c3e50;
+}
+
+// Color dot inside the edge label pill
+.o_insight_edge_dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.o_insight_graph_body {
+    background: #f8f9fa;
+
+    // Cytoscape sets cursor via JS; keep grab here as a base
+    canvas {
+        cursor: grab;
+
+        &:active {
+            cursor: grabbing;
+        }
+    }
+}
+
+// Tooltip
+.o_insight_tooltip {
+    font-size: 12px;
+    line-height: 1.4;
+
+    .table td {
+        padding: 1px 4px;
+    }
+}
+
+// Tooltip badge colors — only used by NodeTooltip, not by Cytoscape canvas.
+// These intentionally have no values here; domain modules define them.
+// See survey_insights_manager for the flow_state example.
+.o_insight_badge { border-radius: 3px; padding: 1px 5px; font-size: 11px; }
+
+// ── Node context menu overlay ─────────────────────────────────────────────
+
+.o_insight_ctx_overlay {
+    position: absolute;
+    pointer-events: none; // pass-through to Cytoscape by default
+    z-index: 100;
+}
+
+.o_insight_ctx_actions {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: all; // re-enable for buttons
+
+    &.o_insight_ctx_actions_top {
+        bottom: calc(100% + 5px);
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+
+    &.o_insight_ctx_actions_bottom {
+        top: calc(100% + 5px);
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+}
+
+.o_insight_ctx_btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid #ced4da;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    color: #495057;
+    padding: 0;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+
+    &:hover {
+        background: #f0f4f8;
+        border-color: #868e96;
+    }
+
+    &.o_insight_ctx_btn_danger:hover {
+        background: #fee2e2;
+        border-color: #ef4444;
+        color: #dc2626;
+    }
+
+    // Active pin state — amber
+    &.o_insight_ctx_btn_pinned {
+        background: #fef3c7;
+        border-color: #f59e0b;
+        color: #b45309;
+
+        &:hover {
+            background: #fde68a;
+            border-color: #d97706;
+            color: #92400e;
+        }
+    }
+}
+
+// Draggable relation circle — one per link definition
+.o_insight_ctx_rel_circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px dashed #4a9eda;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    font-size: 9px;
+    font-weight: 600;
+    color: #4a9eda;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    user-select: none;
+    transition: background 0.12s, border-style 0.12s;
+
+    &:hover {
+        background: #e8f4fd;
+        border-style: solid;
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+
+    // Collapsed state: related nodes are hidden — shows "+" inside
+    &.o_insight_ctx_rel_collapsed {
+        border-color: #e67e22;
+        border-style: solid;
+        color: #e67e22;
+        font-size: 13px;
+
+        &:hover {
+            background: #fef3e8;
+            border-color: #d35400;
+            color: #d35400;
+        }
+    }
+}
+
+// ── Selection action bar (Odoo-style) ────────────────────────────────────
+
+.o_insight_selection_bar {
+    min-height: 38px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    background: #eff6ff;
+    border-bottom: 1px solid #bfdbfe;
+    font-size: 13px;
+
+    .o_insight_selection_count {
+        color: #1e40af;
+        white-space: nowrap;
+    }
+
+    .o_insight_sel_clear_btn {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid #93c5fd;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        cursor: pointer;
+        color: #3b82f6;
+        padding: 0;
+        line-height: 1;
+        flex-shrink: 0;
+
+        &:hover {
+            background: #dbeafe;
+            border-color: #3b82f6;
+        }
+    }
+
+    .o_insight_action_btn {
+        border-color: #93c5fd;
+        color: #1d4ed8;
+        background: #fff;
+
+        &:hover {
+            background: #dbeafe;
+            border-color: #3b82f6;
+        }
+
+        // Odoo's oe_highlight class → primary button style
+        &.oe_highlight {
+            background: #2563eb;
+            border-color: #1d4ed8;
+            color: #fff;
+
+            &:hover {
+                background: #1d4ed8;
+                border-color: #1e40af;
+            }
+        }
+    }
+}
+
+// ── Layout selector dropdown ──────────────────────────────────────────────
+
+.o_insight_layout_menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 150px;
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+    .dropdown-item {
+        font-size: 13px;
+        padding: 5px 12px;
+
+        &.active {
+            background: #e8f4fd;
+            color: #1a5276;
+            font-weight: 600;
+        }
+    }
+}
+
+// ── SVG drag-link line overlay ────────────────────────────────────────────
+
+.o_insight_link_svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 99;
+}

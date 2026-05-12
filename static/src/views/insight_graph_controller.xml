@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.InsightGraphController">
+        <Layout display="props.display" className="'o_insight_graph_view'">
+            <t t-set-slot="layout-actions">
+                <t t-if="state.selectionInfo">
+                    <div class="o_insight_selection_bar d-flex align-items-center gap-2 px-2">
+                        <span class="o_insight_selection_count">
+                            <strong t-esc="state.selectionInfo.count"/>
+                            <t t-if="state.selectionInfo.count === 1"> seleccionado</t>
+                            <t t-else=""> seleccionados</t>
+                        </span>
+                        <button class="o_insight_sel_clear_btn"
+                                t-on-click="onSelectionBarClear"
+                                title="Deseleccionar todo">
+                            <i class="fa fa-times"/>
+                        </button>
+                        <t t-if="state.selectionInfo.buttons.length">
+                            <div class="o_insight_legend_sep"/>
+                            <t t-foreach="state.selectionInfo.buttons" t-as="btn" t-key="btn_index">
+                                <button t-attf-class="btn btn-sm o_insight_action_btn #{btn.btnClass}"
+                                        t-att-title="btn.title"
+                                        t-on-click.stop="() => this.onSelectionBarAction(btn)">
+                                    <i t-if="btn.icon" t-attf-class="fa #{btn.icon} me-1"/>
+                                    <t t-esc="btn.title"/>
+                                </button>
+                            </t>
+                        </t>
+                        <div class="o_insight_legend_sep"/>
+                        <button class="btn btn-sm o_insight_action_btn"
+                                t-on-click="onHideSelectedNodes"
+                                title="Ocultar en el gráfico">
+                            <i class="fa fa-eye-slash me-1"/>Ocultar
+                        </button>
+                        <button class="btn btn-sm o_insight_action_btn"
+                                t-on-click="onPinSelectedNodes"
+                                title="Pinear nodo(s)">
+                            <i class="fa fa-thumb-tack me-1"/>Pinear
+                        </button>
+                        <button class="btn btn-sm o_insight_action_btn text-danger"
+                                t-on-click="onDeleteSelectedNodes"
+                                title="Eliminar registro(s)">
+                            <i class="fa fa-trash me-1"/>Eliminar
+                        </button>
+                    </div>
+                </t>
+                <SearchBar t-elif="searchBarToggler.state.showSearchBar"/>
+            </t>
+            <t t-set-slot="control-panel-navigation-additional">
+                <t t-component="searchBarToggler.component" t-props="searchBarToggler.props"/>
+            </t>
+            <t t-if="state.loading">
+                <div class="d-flex justify-content-center align-items-center h-100">
+                    <i class="fa fa-spinner fa-spin fa-3x text-muted"/>
+                </div>
+            </t>
+            <t t-elif="state.error">
+                <div class="alert alert-danger m-4" t-esc="state.error"/>
+            </t>
+            <t t-else="">
+                <InsightGraphRenderer
+                    graphData="state.graphData"
+                    primaryModel="props.resModel"
+                    modelConfigs="state.modelConfigs"
+                    onOpenForm.bind="onOpenForm"
+                    onDeleteNode.bind="onDeleteNode"
+                    onLinkNodes.bind="onLinkNodes"
+                    onCreateAndLink.bind="onCreateAndLink"
+                    onExecuteAction.bind="onExecuteAction"
+                    onPinNode.bind="onPinNode"
+                    onUnpinNode.bind="onUnpinNode"
+                    onSelectionChange.bind="onSelectionChange"
+                    onRendererReady.bind="onRendererReady"
+                />
+            </t>
+        </Layout>
+    </t>
+</templates>

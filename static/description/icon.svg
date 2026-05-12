@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#4a9eda"/>
+      <stop offset="100%" stop-color="#1a5276"/>
+    </linearGradient>
+    <!-- Arrowhead marker for directed edges -->
+    <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,1 L0,6 L6,3.5 Z" fill="rgba(255,255,255,0.75)"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="200" height="200" rx="28" fill="url(#bg)"/>
+
+  <!-- ── Edges (drawn behind nodes) ──────────────────────────────────── -->
+  <!-- top  → mid-left  -->
+  <line x1="100" y1="59"  x2="55"  y2="95"  stroke="white" stroke-width="3.5" stroke-opacity="0.65" stroke-linecap="round" marker-end="url(#arr)"/>
+  <!-- top  → mid-right -->
+  <line x1="100" y1="59"  x2="145" y2="95"  stroke="white" stroke-width="3.5" stroke-opacity="0.65" stroke-linecap="round" marker-end="url(#arr)"/>
+  <!-- mid-left  → bottom -->
+  <line x1="52"  y1="121" x2="88"  y2="149" stroke="white" stroke-width="3.5" stroke-opacity="0.65" stroke-linecap="round" marker-end="url(#arr)"/>
+  <!-- mid-right → bottom -->
+  <line x1="148" y1="121" x2="112" y2="149" stroke="white" stroke-width="3.5" stroke-opacity="0.65" stroke-linecap="round" marker-end="url(#arr)"/>
+
+  <!-- ── Nodes ────────────────────────────────────────────────────────── -->
+  <!-- Primary node — top, larger, solid white -->
+  <circle cx="100" cy="44"  r="16" fill="white"/>
+
+  <!-- Mid-left -->
+  <circle cx="52"  cy="108" r="13" fill="white" fill-opacity="0.88"/>
+
+  <!-- Mid-right -->
+  <circle cx="148" cy="108" r="13" fill="white" fill-opacity="0.88"/>
+
+  <!-- Bottom — slightly smaller to hint at depth -->
+  <circle cx="100" cy="161" r="13" fill="white" fill-opacity="0.88"/>
+</svg>

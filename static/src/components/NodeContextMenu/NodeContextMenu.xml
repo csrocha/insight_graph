@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.NodeContextMenu">
+        <!--
+            Positioned overlay at node bounding box. pointer-events:none so clicks
+            pass through to Cytoscape; re-enabled only on the action buttons/circles.
+        -->
+        <div class="o_insight_ctx_overlay" t-att-style="overlayStyle">
+
+            <!-- Bottom bar: one circle per relation link -->
+            <t t-if="props.linkDefs.length">
+                <div class="o_insight_ctx_actions o_insight_ctx_actions_bottom">
+                    <t t-foreach="props.linkDefs" t-as="link" t-key="link_index">
+                        <!--
+                            Collapsed (+ inside): related node(s) are hidden.
+                              • click  → reveal at nearby position
+                              • drag   → reveal at drop position
+                            Empty (model abbrev): no hidden related nodes.
+                              • drag   → link existing node or create new
+                        -->
+                        <div t-attf-class="o_insight_ctx_rel_circle #{link.isCollapsed ? 'o_insight_ctx_rel_collapsed' : ''}"
+                             t-att-title="circleTitle(link)"
+                             t-on-mousedown.stop="(e) => props.onStartLink(e, link)"
+                             t-on-click.stop="() => this.onCircleClick(link)">
+                            <t t-if="link.isCollapsed">
+                                <i class="fa fa-plus"/>
+                            </t>
+                            <t t-else="">
+                                <span t-esc="circleLabel(link)"/>
+                            </t>
+                        </div>
+                    </t>
+                </div>
+            </t>
+
+        </div>
+    </t>
+</templates>

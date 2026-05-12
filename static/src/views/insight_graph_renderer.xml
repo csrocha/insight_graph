@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="insight_graph.InsightGraphRenderer">
+        <div class="o_insight_graph_renderer d-flex flex-column flex-grow-1" style="min-height:0">
+
+            <!-- Toolbar -->
+            <div class="o_insight_toolbar d-flex align-items-center gap-2 px-3 border-bottom bg-white flex-shrink-0 flex-wrap" style="min-height:44px;padding-top:6px;padding-bottom:6px">
+
+                <!-- Section 1: Color reference (flow states) -->
+                <t t-if="colorLegend.length">
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="o_insight_legend_title">Estado:</span>
+                        <t t-foreach="colorLegend" t-as="item" t-key="item.state">
+                            <span class="o_insight_badge"
+                                  t-att-style="'background:' + item.bgColor + ';color:' + item.textColor + ';border:1px solid ' + item.borderColor">
+                                <t t-esc="item.state"/>
+                            </span>
+                        </t>
+                    </div>
+                    <div class="o_insight_legend_sep"/>
+                </t>
+
+                <!-- Section 2: Node reference (models with shapes) -->
+                <t t-if="nodeLegend.length">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="o_insight_legend_title">Modelos:</span>
+                        <t t-foreach="nodeLegend" t-as="item" t-key="item.model">
+                            <div class="d-flex align-items-center gap-1">
+                                <div t-attf-class="o_insight_shape_icon o_insight_shape_#{item.shape} #{item.isPrimary ? 'o_insight_shape_primary' : ''}"
+                                     t-att-style="'border-color:' + defaultNodeColors.borderColor + ';background:' + defaultNodeColors.bgColor"/>
+                                <span class="o_insight_legend_title" t-esc="modelShortName(item.model)"/>
+                            </div>
+                        </t>
+                    </div>
+                    <div class="o_insight_legend_sep"/>
+                </t>
+
+                <!-- Section 3: Edge/axis reference (field relationships) -->
+                <t t-if="edgeLegend.length">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="o_insight_legend_title">Relaciones:</span>
+                        <t t-foreach="edgeLegend" t-as="rel" t-key="rel.sourceModel + '.' + rel.sourceField">
+                            <span class="o_insight_edge_label"
+                                  t-att-style="'border-left-color:' + edgeLegendColor(rel)">
+                                <span class="o_insight_edge_dot"
+                                      t-att-style="'background:' + edgeLegendColor(rel)"/>
+                                <t t-esc="edgeLegendLabel(rel)"/>
+                            </span>
+                        </t>
+                    </div>
+                </t>
+
+                <!-- Layout selector + zoom controls -->
+                <div class="ms-auto d-flex gap-1 align-items-center">
+
+                    <!-- Layout dropdown -->
+                    <div class="position-relative">
+                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                t-on-click="onToggleLayoutMenu"
+                                title="Cambiar layout del grafo">
+                            <i t-attf-class="fa #{currentLayout.icon}"/>
+                            <span t-esc="currentLayout.label"/>
+                            <i class="fa fa-caret-down ms-1"/>
+                        </button>
+                        <ul t-if="state.layoutMenuOpen"
+                            class="o_insight_layout_menu dropdown-menu show">
+                            <t t-foreach="constructor.LAYOUTS" t-as="layout" t-key="layout.key">
+                                <li>
+                                    <button t-attf-class="dropdown-item d-flex align-items-center gap-2 #{state.layoutKey === layout.key ? 'active' : ''}"
+                                            t-on-click="(e) => this.onSelectLayout(e, layout.key)">
+                                        <i t-attf-class="fa #{layout.icon}" style="width:14px;text-align:center"/>
+                                        <t t-esc="layout.label"/>
+                                    </button>
+                                </li>
+                            </t>
+                        </ul>
+                    </div>
+
+                    <div class="o_insight_legend_sep"/>
+
+                    <!-- Zoom to selected node -->
+                    <button class="btn btn-sm btn-outline-secondary"
+                            t-on-click="onZoomToSelected"
+                            t-att-disabled="!selectedNodeId"
+                            title="Zoom al nodo seleccionado">
+                        <i class="fa fa-crosshairs"/>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="onZoomIn" title="Zoom in">
+                        <i class="fa fa-search-plus"/>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="onZoomOut" title="Zoom out">
+                        <i class="fa fa-search-minus"/>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="onFit" title="Fit to screen">
+                        <i class="fa fa-compress"/>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Graph canvas + overlays -->
+            <div t-ref="graphBody" class="o_insight_graph_body position-relative">
+                <div t-ref="cytoscapeContainer" style="width:100%;height:100%"/>
+
+                <!-- Hover tooltip — hidden while a node is selected or a drag is active -->
+                <NodeTooltip t-if="state.tooltip and !selectedNodeId and !state.linkingState"
+                             info="state.tooltip"/>
+
+                <!-- Contextual action overlay for single selected node -->
+                <NodeContextMenu t-if="contextMenuInfo"
+                    pos="contextMenuInfo.pos"
+                    linkDefs="contextMenuInfo.linkDefs"
+                    onStartLink.bind="onStartLink"
+                    onClickLink.bind="onClickLink"
+                />
+
+                <!-- SVG drag line while linking -->
+                <t t-if="state.linkingState">
+                    <svg class="o_insight_link_svg" xmlns="http://www.w3.org/2000/svg">
+                        <line
+                            t-att-x1="state.linkingState.sourceX"
+                            t-att-y1="state.linkingState.sourceY"
+                            t-att-x2="state.linkingState.mouseX"
+                            t-att-y2="state.linkingState.mouseY"
+                            stroke="#2563eb" stroke-width="2"
+                            stroke-dasharray="6,4" stroke-linecap="round"
+                        />
+                        <circle
+                            t-att-cx="state.linkingState.mouseX"
+                            t-att-cy="state.linkingState.mouseY"
+                            r="5" fill="#2563eb" opacity="0.7"
+                        />
+                    </svg>
+                </t>
+            </div>
+
+        </div>
+    </t>
+</templates>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!-- ── Component template ─────────────────────────────────────────────── -->
+    <t t-name="insight_graph.PinnedNodesMenu">
+        <div t-if="pinnedNodes.length"
+             class="o_dropdown_container w-100 h-100 w-lg-auto px-3">
+            <div class="px-3 fs-5 mb-2">
+                <i class="me-2 fa fa-thumb-tack text-warning"/>
+                <h5 class="o_dropdown_title d-inline">Pineados</h5>
+            </div>
+
+            <!-- Search input: only shown when there are more than 4 pinned nodes -->
+            <div t-if="pinnedNodes.length > 4" class="px-3 mb-1">
+                <input type="text"
+                       class="form-control form-control-sm"
+                       placeholder="Buscar nodo..."
+                       t-model="state.search"
+                       t-on-click.stop="() => {}"/>
+            </div>
+
+            <t t-foreach="filteredPinnedNodes" t-as="node" t-key="node.id">
+                <button class="o_menu_item dropdown-item d-flex align-items-center gap-2 focus"
+                        t-on-click.stop="() => this.onSelectNode(node.id)">
+                    <i class="fa fa-thumb-tack text-warning" style="font-size:10px;flex-shrink:0"/>
+                    <span class="text-truncate flex-grow-1" t-esc="node.label"/>
+                    <small class="text-muted flex-shrink-0"
+                           t-esc="node.model.split('.').pop()"/>
+                </button>
+            </t>
+
+            <div t-if="!filteredPinnedNodes.length" class="px-3 py-1 text-muted small">
+                Sin resultados
+            </div>
+        </div>
+    </t>
+
+    <!-- ── Inject into web.SearchBarMenu before the default slot ─────────── -->
+    <t t-inherit="web.SearchBarMenu" t-inherit-mode="extension">
+        <xpath expr="//t[@t-slot='default']" position="before">
+            <PinnedNodesMenu t-if="env.igControllerState"/>
+        </xpath>
+    </t>
+
+</templates>
