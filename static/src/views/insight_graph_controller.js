@@ -401,6 +401,15 @@ export class InsightGraphController extends Component {
         await this._loadGraphData();
     }
 
+    async onUnpinSelectedNodes() {
+        const nodes = this.state.selectionInfo?.selectedNodes;
+        if (!nodes?.length) return;
+        for (const node of nodes) {
+            unpinNode(node.model, node.resId);
+        }
+        await this._loadGraphData();
+    }
+
     async onDeleteSelectedNodes() {
         const nodes = this.state.selectionInfo?.selectedNodes;
         if (!nodes?.length) return;

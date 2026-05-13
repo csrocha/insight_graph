@@ -2,6 +2,7 @@
 
 // Persists the Cytoscape viewport across unmount/remount cycles (e.g. after an action refresh).
 let _savedViewport = null;
+let _savedNodePositions = null;
 
 import { Component, onMounted, onWillUnmount, useExternalListener, useRef, useState } from "@odoo/owl";
 /* global ResizeObserver */
@@ -92,6 +93,10 @@ export class InsightGraphRenderer extends Component {
         onWillUnmount(() => {
             if (this.cy) {
                 _savedViewport = { pan: this.cy.pan(), zoom: this.cy.zoom() };
+                _savedNodePositions = {};
+                this.cy.nodes().forEach((n) => {
+                    _savedNodePositions[n.id()] = { ...n.position() };
+                });
             }
             this._dragCleanup?.();
             this._resizeObserver?.disconnect();
@@ -409,7 +414,7 @@ export class InsightGraphRenderer extends Component {
     _notifySelectionChange() {
         const selectedNodes = this.props.graphData.nodes
             .filter((n) => this.state.selectedNodeIds[n.id])
-            .map((n) => ({ model: n.model, resId: n.resId, id: n.id, label: n.label }));
+            .map((n) => ({ model: n.model, resId: n.resId, id: n.id, label: n.label, isPinned: !!(this.state.pinnedNodeIds[n.id] || n.isPinned) }));
 
         this.props.onSelectionChange?.(
             this.selectionCount,
@@ -585,6 +590,17 @@ export class InsightGraphRenderer extends Component {
             maxZoom: 3,
             boxSelectionEnabled: true,  // shift+drag to multi-select
         });
+
+        // Restore saved positions for nodes that existed before (new nodes keep dagre positions)
+        if (_savedNodePositions) {
+            this.cy.batch(() => {
+                this.cy.nodes().forEach((n) => {
+                    const pos = _savedNodePositions[n.id()];
+                    if (pos) n.position(pos);
+                });
+            });
+            _savedNodePositions = null;
+        }
 
         // Re-apply hidden state from previous session
         for (const [nodeId, isHidden] of Object.entries(this.state.hiddenNodes)) {

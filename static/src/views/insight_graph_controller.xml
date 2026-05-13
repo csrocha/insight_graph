@@ -51,10 +51,12 @@
                                 title="Ocultar en el gráfico">
                             <i class="fa fa-eye-slash me-1"/>Ocultar
                         </button>
+                        <t t-set="allPinned" t-value="state.selectionInfo.selectedNodes.every(n => n.isPinned)"/>
                         <button class="btn btn-sm o_insight_action_btn"
-                                t-on-click="onPinSelectedNodes"
-                                title="Pinear nodo(s)">
-                            <i class="fa fa-thumb-tack me-1"/>Pinear
+                                t-on-click="allPinned ? onUnpinSelectedNodes : onPinSelectedNodes"
+                                t-att-title="allPinned ? 'Despinear nodo(s)' : 'Pinear nodo(s)'">
+                            <i t-attf-class="fa fa-thumb-tack me-1 #{allPinned ? 'text-warning' : ''}"/>
+                            <t t-esc="allPinned ? 'Despinear' : 'Pinear'"/>
                         </button>
                         <button class="btn btn-sm o_insight_action_btn text-danger"
                                 t-on-click="onDeleteSelectedNodes"
