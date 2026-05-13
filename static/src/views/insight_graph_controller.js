@@ -14,6 +14,7 @@ import { useDebugCategory } from "@web/core/debug/debug_context";
 import { InsightGraphArchParser } from "./insight_graph_arch_parser";
 import { InsightGraphRenderer } from "./insight_graph_renderer";
 import { getPins, pinNode, unpinNode } from "../utils/insight_graph_pins";
+import { formatMonetary } from "@web/views/fields/formatters";
 
 export class InsightGraphController extends Component {
     static template = "insight_graph.InsightGraphController";
@@ -624,6 +625,8 @@ export class InsightGraphController extends Component {
             ? `data:image/png;base64,${rec[imageField]}`
             : null;
 
+        const hasTemplate = Boolean(config?.nodeTemplate);
+
         return {
             id: this._nodeId(model, rec.id),
             label,
@@ -635,7 +638,31 @@ export class InsightGraphController extends Component {
             tooltipFields,
             rawFields,
             imageDataUrl,
+            // HTML overlay fields (only populated in template mode)
+            htmlNode: hasTemplate ? true : undefined,
+            nodeWidth: hasTemplate ? (config?.nodeWidth || 180) : null,
+            nodeHeight: hasTemplate ? (config?.nodeHeight || 120) : null,
+            displayFields: this._buildDisplayFields(rec, config),
         };
+    }
+
+    _buildDisplayFields(rec, config) {
+        const result = {};
+        for (const f of config?.nodeFields || []) {
+            const val = rec[f.name];
+            if (f.monetary && val !== false && val != null) {
+                const rawCurrency = f.currencyField ? rec[f.currencyField] : undefined;
+                const currencyId = Array.isArray(rawCurrency) ? rawCurrency[0] : rawCurrency;
+                result[f.name] = formatMonetary(val, { currencyId });
+            } else {
+                result[f.name] = Array.isArray(val) ? val[1] : String(val ?? "");
+            }
+        }
+        const imgField = config?.imageField;
+        if (imgField && rec[imgField]) {
+            result[imgField] = `data:image/png;base64,${rec[imgField]}`;
+        }
+        return result;
     }
 
     _extractIds(fieldValue) {

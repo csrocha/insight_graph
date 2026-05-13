@@ -46,6 +46,10 @@
         transform: rotate(45deg);
         margin: 0 6px;
     }
+    &.o_insight_shape_octagon {
+        border-radius: 0;
+        clip-path: polygon(29% 0%, 71% 0%, 100% 29%, 100% 71%, 71% 100%, 29% 100%, 0% 71%, 0% 29%);
+    }
     &.o_insight_shape_primary {
         border-width: 2.5px;
         font-weight: bold;
@@ -79,6 +83,7 @@
 
 .o_insight_graph_body {
     background: #f8f9fa;
+    overflow: hidden;
 
     // Cytoscape sets cursor via JS; keep grab here as a base
     canvas {
@@ -298,6 +303,36 @@
             color: #1a5276;
             font-weight: 600;
         }
+    }
+}
+
+// ── HTML overlay node layer ───────────────────────────────────────────────
+
+.o_ig_html_layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    transform-origin: 0 0;
+    z-index: 10;
+}
+
+.o_ig_node_html {
+    position: absolute;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: 6px;
+
+    &.o_ig_node_selected {
+        outline: 3px solid #2563eb;
+        outline-offset: 2px;
+    }
+
+    &.o_ig_node_pinned:not(.o_ig_node_selected) {
+        outline: 3px solid #f59e0b;
+        outline-offset: 2px;
     }
 }
 

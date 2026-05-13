@@ -39,10 +39,12 @@ export class InsightGraphRenderer extends Component {
     setup() {
         this.container = useRef("cytoscapeContainer");
         this.graphBody = useRef("graphBody");
+        this.htmlLayer = useRef("htmlLayer");
         this.cy = null;
         this._resizeObserver = null;
         this._dragCleanup = null;
         this._suppressSelectEvents = false;
+        this._nodeDivs = {};  // nodeId → HTMLElement (template-mode nodes only)
 
         this.state = useState({
             tooltip: null,
@@ -245,6 +247,7 @@ export class InsightGraphRenderer extends Component {
             if (node.isPinned) {
                 this.state.pinnedNodeIds[node.id] = true;
                 this.cy?.getElementById(node.id).addClass("ig-pinned");
+                this._nodeDivs[node.id]?.classList.add("o_ig_node_pinned");
             }
         }
     }
@@ -433,6 +436,11 @@ export class InsightGraphRenderer extends Component {
         this.cy?.elements().unselect();
         this._suppressSelectEvents = false;
 
+        // Clear HTML selection on all previously selected nodes
+        for (const [id, selected] of Object.entries(this.state.selectedNodeIds)) {
+            if (selected) this._nodeDivs[id]?.classList.remove("o_ig_node_selected");
+        }
+
         this.state.selectedNodeIds = {};
         this.state.contextMenuPos = null;
 
@@ -441,6 +449,7 @@ export class InsightGraphRenderer extends Component {
             this.cy?.getElementById(nodeId).select();
             this._suppressSelectEvents = false;
             this.state.selectedNodeIds[nodeId] = true;
+            this._nodeDivs[nodeId]?.classList.add("o_ig_node_selected");
             const nodeData = this.props.graphData.nodes.find((n) => n.id === nodeId);
             console.debug(`[ig:select] nodeId=${nodeId} label="${nodeData?.label}" model=${nodeData?.model}`);
             this._updateContextMenuPos();
@@ -458,9 +467,11 @@ export class InsightGraphRenderer extends Component {
         if (this.state.selectedNodeIds[nodeId]) {
             this.cy?.getElementById(nodeId).unselect();
             this.state.selectedNodeIds[nodeId] = false;
+            this._nodeDivs[nodeId]?.classList.remove("o_ig_node_selected");
         } else {
             this.cy?.getElementById(nodeId).select();
             this.state.selectedNodeIds[nodeId] = true;
+            this._nodeDivs[nodeId]?.classList.add("o_ig_node_selected");
         }
         this._suppressSelectEvents = false;
 
@@ -646,11 +657,113 @@ export class InsightGraphRenderer extends Component {
             this.state.tooltip = null;
         });
 
-        // Keep context menu aligned on pan/zoom
+        // Keep context menu aligned on pan/zoom; sync HTML overlay
         this.cy.on("viewport", () => {
+            this._syncHtmlLayerViewport();
             this.state.tooltip = null;
             this._updateContextMenuPos();
         });
+
+        // After a node drag: move its HTML card to the new position
+        this.cy.on("dragfree", "node", (evt) => {
+            this._syncNodeHtmlPos(evt.target.id(), evt.target.position());
+        });
+
+        // After any layout completes: rebuild overlay cards at new positions
+        this.cy.on("layoutstop", () => {
+            this._initHtmlOverlay();
+        });
+
+        // The initial layout runs synchronously during cytoscape() construction,
+        // so layoutstop already fired before our listener was registered above.
+        // Call _initHtmlOverlay() explicitly here for the first render.
+        this._initHtmlOverlay();
+    }
+
+    // ── HTML overlay node layer ──────────────────────────────────────────────
+
+    _initHtmlOverlay() {
+        const layer = this.htmlLayer?.el;
+        if (!layer || !this.cy) return;
+        this._nodeDivs = {};
+        layer.innerHTML = "";
+
+        for (const node of this.props.graphData.nodes) {
+            const config = this.props.modelConfigs?.[node.model];
+            if (!config?.nodeTemplate) continue;
+
+            const cyNode = this.cy.getElementById(node.id);
+            if (!cyNode || cyNode.empty()) continue;
+
+            const pos = cyNode.position();
+            const W = node.nodeWidth || 180;
+            const H = node.nodeHeight || 120;
+
+            const div = document.createElement("div");
+            div.className = "o_ig_node_html";
+            if (node.isPinned) div.classList.add("o_ig_node_pinned");
+            if (this.state.selectedNodeIds[node.id]) div.classList.add("o_ig_node_selected");
+            div.style.cssText = `left:${pos.x - W / 2}px;top:${pos.y - H / 2}px;width:${W}px;height:${H}px`;
+            div.innerHTML = this._renderNodeTemplate(node, config);
+
+            layer.appendChild(div);
+            this._nodeDivs[node.id] = div;
+        }
+        this._syncHtmlLayerViewport();
+    }
+
+    _syncHtmlLayerViewport() {
+        const layer = this.htmlLayer?.el;
+        if (!layer || !this.cy) return;
+        const { x, y } = this.cy.pan();
+        const z = this.cy.zoom();
+        layer.style.transform = `translate(${x}px,${y}px) scale(${z})`;
+    }
+
+    _syncNodeHtmlPos(nodeId, pos) {
+        const div = this._nodeDivs[nodeId];
+        if (!div) return;
+        const node = this.props.graphData.nodes.find((n) => n.id === nodeId);
+        const W = node?.nodeWidth || 180;
+        const H = node?.nodeHeight || 120;
+        div.style.left = `${pos.x - W / 2}px`;
+        div.style.top = `${pos.y - H / 2}px`;
+    }
+
+    _refreshAllNodeHtmlPos() {
+        for (const nodeId of Object.keys(this._nodeDivs)) {
+            const cyNode = this.cy?.getElementById(nodeId);
+            if (!cyNode || cyNode.empty()) continue;
+            this._syncNodeHtmlPos(nodeId, cyNode.position());
+        }
+    }
+
+    _renderNodeTemplate(node, config) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div>${config.nodeTemplate}</div>`, "text/html");
+        const root = doc.body.firstChild;
+
+        for (const span of [...root.querySelectorAll("[data-ig-field]")]) {
+            const fname = span.getAttribute("data-ig-field");
+            span.textContent = node.displayFields?.[fname] || "";
+            span.removeAttribute("data-ig-field");
+        }
+        for (const span of [...root.querySelectorAll("[data-ig-image]")]) {
+            const fname = span.getAttribute("data-ig-image");
+            const dataUrl = node.displayFields?.[fname];
+            if (dataUrl) {
+                const img = document.createElement("img");
+                img.src = dataUrl;
+                const cls = span.getAttribute("data-ig-img-class");
+                const sty = span.getAttribute("data-ig-img-style");
+                if (cls) img.className = cls;
+                if (sty) img.style.cssText = sty;
+                span.parentNode.replaceChild(img, span);
+            } else {
+                span.remove();
+            }
+        }
+        return root.innerHTML;
     }
 
     _buildStyle() {
@@ -687,8 +800,9 @@ export class InsightGraphRenderer extends Component {
             },
             { selector: 'node[shape = "roundrectangle"]', style: { shape: "roundrectangle" } },
             { selector: 'node[shape = "rectangle"]',      style: { shape: "rectangle" } },
-            { selector: 'node[shape = "diamond"]',        style: { shape: "diamond", width: "150px", padding: "22px" } },
+            { selector: 'node[shape = "diamond"]',        style: { shape: "diamond", width: "140px", height: "140px", padding: "22px" } },
             { selector: 'node[shape = "ellipse"]',        style: { shape: "ellipse" } },
+            { selector: 'node[shape = "octagon"]',        style: { shape: "octagon", width: "130px", height: "130px" } },
             // Selected node (uses Cytoscape's :selected pseudo-class)
             {
                 selector: "node:selected",
@@ -720,6 +834,24 @@ export class InsightGraphRenderer extends Component {
                     "overlay-opacity": 0.15,
                     "overlay-color": "#10b981",
                     "overlay-padding": 6,
+                },
+            },
+            // Template-mode nodes: transparent fill + no label; HTML overlay handles visuals
+            {
+                selector: "node[htmlNode]",
+                style: {
+                    width: "data(nodeWidth)",
+                    height: "data(nodeHeight)",
+                    "background-opacity": 0,
+                    "text-opacity": 0,
+                    "border-opacity": 0,
+                },
+            },
+            {
+                selector: "node[htmlNode]:selected",
+                style: {
+                    "border-opacity": 0,
+                    "overlay-opacity": 0,
                 },
             },
             // Image nodes — show image at top, label at bottom

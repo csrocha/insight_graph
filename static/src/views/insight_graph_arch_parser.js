@@ -118,7 +118,12 @@ export class InsightGraphArchParser {
                     continue;
                 }
 
-                nodeFields.push({ name, primary: isPrimary, color: isColor, invisible: null });
+                const isMonetary = fieldEl.getAttribute("type") === "monetary";
+                const currencyField = isMonetary
+                    ? (fieldEl.getAttribute("currency_field") || "currency_id")
+                    : null;
+                if (currencyField) invisibleFieldSet.add(currencyField);
+                nodeFields.push({ name, primary: isPrimary, color: isColor, invisible: null, monetary: isMonetary, currencyField });
                 if (isPrimary) primaryField = name;
                 if (isColor) colorField = name;
             }
@@ -154,6 +159,59 @@ export class InsightGraphArchParser {
             }
         }
 
+        const nodeWidth = parseInt(nodeEl?.getAttribute("width") || "180");
+        const nodeHeight = parseInt(nodeEl?.getAttribute("height") || "120");
+
+        // Detect template mode: <node> has non-<field> direct/descendant elements
+        const hasTemplate = nodeEl
+            ? [...nodeEl.children].some((ch) => ch.tagName.toLowerCase() !== "field")
+            : false;
+
+        let nodeTemplate = null;
+        if (hasTemplate) {
+            // Scan <field> elements inside the template to know which fields to fetch
+            for (const fieldEl of nodeEl.querySelectorAll("field")) {
+                const name = fieldEl.getAttribute("name");
+                if (!name) continue;
+                const isImage = fieldEl.getAttribute("type") === "image";
+                if (isImage) {
+                    imageField = name;
+                    invisibleFieldSet.add(name);
+                } else {
+                    const isPrimary = fieldEl.getAttribute("primary") === "true";
+                    const isColor = fieldEl.getAttribute("color") === "true";
+                    const isMonetary = fieldEl.getAttribute("type") === "monetary";
+                    const currencyField = isMonetary
+                        ? (fieldEl.getAttribute("currency_field") || "currency_id")
+                        : null;
+                    if (currencyField) invisibleFieldSet.add(currencyField);
+                    if (!nodeFields.find((f) => f.name === name)) {
+                        nodeFields.push({ name, primary: isPrimary, color: isColor, invisible: null, monetary: isMonetary, currencyField });
+                    }
+                    if (isPrimary) primaryField = name;
+                    if (isColor) colorField = name;
+                }
+            }
+            // Clone and convert <field> elements to span placeholders for runtime rendering
+            const clone = nodeEl.cloneNode(true);
+            for (const fieldEl of [...clone.querySelectorAll("field")]) {
+                const name = fieldEl.getAttribute("name");
+                const isImage = fieldEl.getAttribute("type") === "image";
+                const span = document.createElement("span");
+                if (isImage) {
+                    span.setAttribute("data-ig-image", name);
+                    const cls = fieldEl.getAttribute("class");
+                    const sty = fieldEl.getAttribute("style");
+                    if (cls) span.setAttribute("data-ig-img-class", cls);
+                    if (sty) span.setAttribute("data-ig-img-style", sty);
+                } else {
+                    span.setAttribute("data-ig-field", name);
+                }
+                fieldEl.parentNode.replaceChild(span, fieldEl);
+            }
+            nodeTemplate = clone.innerHTML;
+        }
+
         return {
             shape,
             primaryField,
@@ -163,6 +221,9 @@ export class InsightGraphArchParser {
             links,
             buttons,
             invisibleFields: [...invisibleFieldSet],
+            nodeWidth,
+            nodeHeight,
+            nodeTemplate,
         };
     }
 }
