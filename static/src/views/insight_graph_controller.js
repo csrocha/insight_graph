@@ -3,6 +3,8 @@
 import { Component, onWillStart, onWillUpdateProps, useState, useSubEnv } from "@odoo/owl";
 import { evaluateBooleanExpr } from "@web/core/py_js/py_utils";
 import { useService } from "@web/core/utils/hooks";
+import { Dropdown } from "@web/core/dropdown/dropdown";
+import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { Layout } from "@web/search/layout";
 import { SearchBar } from "@web/search/search_bar/search_bar";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
@@ -14,7 +16,7 @@ import { getPins, pinNode, unpinNode } from "../utils/insight_graph_pins";
 
 export class InsightGraphController extends Component {
     static template = "insight_graph.InsightGraphController";
-    static components = { InsightGraphRenderer, Layout, SearchBar };
+    static components = { InsightGraphRenderer, Layout, SearchBar, Dropdown, DropdownItem };
     static props = {
         resModel: { type: String },
         domain: { type: Array, optional: true },
@@ -315,6 +317,12 @@ export class InsightGraphController extends Component {
         }
     }
 
+    // ── Toolbar actions ──────────────────────────────────────────────────────
+
+    onCreateRecord() {
+        this.props.createRecord?.();
+    }
+
     // ── Node action handlers ─────────────────────────────────────────────────
 
     onOpenForm(nodeData) {
@@ -609,6 +617,11 @@ export class InsightGraphController extends Component {
                 return { name: f.name, value: Array.isArray(val) ? val[1] : String(val ?? "") };
             });
 
+        const imageField = config?.imageField;
+        const imageDataUrl = imageField && rec[imageField]
+            ? `data:image/png;base64,${rec[imageField]}`
+            : null;
+
         return {
             id: this._nodeId(model, rec.id),
             label,
@@ -619,6 +632,7 @@ export class InsightGraphController extends Component {
             isPrimary,
             tooltipFields,
             rawFields,
+            imageDataUrl,
         };
     }
 

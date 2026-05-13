@@ -2,22 +2,22 @@
 <templates xml:space="preserve">
     <t t-name="insight_graph.InsightGraphController">
         <Layout display="props.display" className="'o_insight_graph_view'">
+            <t t-set-slot="layout-buttons">
+                <button type="button" class="btn btn-primary" t-on-click="onCreateRecord">
+                    Nuevo
+                </button>
+            </t>
             <t t-set-slot="control-panel-additional-actions">
                 <t t-if="!state.selectionInfo and state.graphData">
-                    <div class="dropdown">
-                        <button type="button"
-                                class="btn btn-secondary o_cp_action_menus dropdown-toggle"
-                                data-bs-toggle="dropdown"
-                                aria-expanded="false">
-                            <i class="fa fa-cog me-1"/>Acciones
-                        </button>
-                        <ul class="dropdown-menu">
-                            <li>
-                                <button type="button" class="dropdown-item" t-on-click="onExportGraphML">
-                                    <i class="fa fa-download me-1"/>Exportar a GraphML
-                                </button>
-                            </li>
-                        </ul>
+                    <div class="o_cp_action_menus d-flex align-items-center pe-2 gap-1">
+                        <Dropdown class="'lh-1'" togglerClass="'d-print-none btn p-0 ms-1 lh-sm border-0'" menuClass="'lh-base'">
+                            <t t-set-slot="toggler">
+                                <i class="fa fa-cog" data-tooltip="Acciones"/>
+                            </t>
+                            <DropdownItem class="'text-truncate o_menu_item'" onSelected="() => this.onExportGraphML()">
+                                <i class="fa fa-download fa-fw oi-fw me-1"/>Exportar a GraphML
+                            </DropdownItem>
+                        </Dropdown>
                     </div>
                 </t>
             </t>

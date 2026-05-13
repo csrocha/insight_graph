@@ -722,6 +722,23 @@ export class InsightGraphRenderer extends Component {
                     "overlay-padding": 6,
                 },
             },
+            // Image nodes — show image at top, label at bottom
+            {
+                selector: "node[imageDataUrl]",
+                style: {
+                    "background-image": "data(imageDataUrl)",
+                    "background-fit": "none",
+                    "background-clip": "node",
+                    "background-width": "48px",
+                    "background-height": "48px",
+                    "background-position-x": "50%",
+                    "background-position-y": "6px",
+                    "background-image-opacity": 1,
+                    height: "82px",
+                    "text-valign": "bottom",
+                    "text-margin-y": -6,
+                },
+            },
             // Hidden nodes
             {
                 selector: "node.ig-hidden",

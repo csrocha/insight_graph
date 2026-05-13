@@ -71,6 +71,8 @@ export class InsightGraphArchParser {
         let colorField = null;
         const invisibleFieldSet = new Set();
 
+        let imageField = null;
+
         if (nodeEl) {
             for (const fieldEl of nodeEl.querySelectorAll("field")) {
                 const name = fieldEl.getAttribute("name");
@@ -79,6 +81,19 @@ export class InsightGraphArchParser {
                 const invisibleExpr = fieldEl.getAttribute("invisible") || "";
                 const isPrimary = fieldEl.getAttribute("primary") === "true";
                 const isColor = fieldEl.getAttribute("color") === "true";
+                const isImage = fieldEl.getAttribute("type") === "image";
+
+                if (isImage) {
+                    if (isPrimary || isColor) {
+                        throw new Error(
+                            `insight_graph: field "${name}" has type="image" but is also ` +
+                            `marked as primary or color, which is not supported.`
+                        );
+                    }
+                    imageField = name;
+                    invisibleFieldSet.add(name);
+                    continue;
+                }
 
                 if (invisibleExpr) {
                     if (isTautologicallyTrue(invisibleExpr)) {
@@ -143,6 +158,7 @@ export class InsightGraphArchParser {
             shape,
             primaryField,
             colorField,
+            imageField,
             nodeFields,
             links,
             buttons,
