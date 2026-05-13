@@ -72,7 +72,14 @@ export class InsightGraphRenderer extends Component {
                 this.cy.fit(undefined, 40);
             }
             this._syncPinsFromStorage();
-            this.props.onRendererReady?.({ centerOnNode: (id) => this._centerOnNode(id) });
+            this.props.onRendererReady?.({
+                centerOnNode: (id) => this._centerOnNode(id),
+                getHiddenNodeIds: () => new Set(
+                    Object.entries(this.state.hiddenNodes)
+                        .filter(([, v]) => v)
+                        .map(([id]) => id)
+                ),
+            });
             this._resizeObserver = new ResizeObserver(() => {
                 this._fitBodyHeight();
                 this.cy?.resize();

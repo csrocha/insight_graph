@@ -408,6 +408,79 @@ export class InsightGraphController extends Component {
         });
     }
 
+    onExportGraphML() {
+        const graphData = this.state.graphData;
+        if (!graphData) return;
+
+        const esc = (str) => String(str ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+        const allFieldNames = new Set();
+        for (const node of graphData.nodes) {
+            for (const f of node.tooltipFields || []) allFieldNames.add(f.name);
+        }
+
+        const hiddenNodeIds = this._rendererActions?.getHiddenNodeIds?.() ?? new Set();
+
+        const lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<graphml xmlns="http://graphml.graphdrawing.org/graphml">',
+            '  <key id="d_label" for="node" attr.name="label" attr.type="string"/>',
+            '  <key id="d_model" for="node" attr.name="model" attr.type="string"/>',
+            '  <key id="d_resId" for="node" attr.name="resId" attr.type="int"/>',
+            '  <key id="d_flowState" for="node" attr.name="flowState" attr.type="string"/>',
+            '  <key id="d_hidden" for="node" attr.name="hidden" attr.type="boolean"/>',
+            '  <key id="d_pinned" for="node" attr.name="pinned" attr.type="boolean"/>',
+        ];
+        for (const fname of allFieldNames) {
+            lines.push(`  <key id="d_${esc(fname)}" for="node" attr.name="${esc(fname)}" attr.type="string"/>`);
+        }
+        lines.push('  <key id="e_model" for="edge" attr.name="model" attr.type="string"/>');
+        lines.push('  <key id="e_field" for="edge" attr.name="field" attr.type="string"/>');
+        lines.push('  <graph id="G" edgedefault="directed">');
+
+        for (const node of graphData.nodes) {
+            lines.push(`    <node id="${esc(node.id)}">`);
+            lines.push(`      <data key="d_label">${esc(node.label)}</data>`);
+            lines.push(`      <data key="d_model">${esc(node.model)}</data>`);
+            lines.push(`      <data key="d_resId">${node.resId}</data>`);
+            if (node.flowState) {
+                lines.push(`      <data key="d_flowState">${esc(node.flowState)}</data>`);
+            }
+            if (hiddenNodeIds.has(node.id)) {
+                lines.push('      <data key="d_hidden">true</data>');
+            }
+            if (node.isPinned) {
+                lines.push('      <data key="d_pinned">true</data>');
+            }
+            for (const f of node.tooltipFields || []) {
+                lines.push(`      <data key="d_${esc(f.name)}">${esc(f.value)}</data>`);
+            }
+            lines.push('    </node>');
+        }
+
+        graphData.edges.forEach((edge, i) => {
+            lines.push(`    <edge id="e${i}" source="${esc(edge.source)}" target="${esc(edge.target)}">`);
+            lines.push(`      <data key="e_model">${esc(edge.relationModel)}</data>`);
+            lines.push(`      <data key="e_field">${esc(edge.relationField)}</data>`);
+            lines.push('    </edge>');
+        });
+
+        lines.push('  </graph>');
+        lines.push('</graphml>');
+
+        const blob = new Blob([lines.join("\n")], { type: "application/xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${this.props.resModel.replace(/\./g, "_")}_graph.graphml`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
     async onExecuteAction(model, resIds, buttonDef) {
         const result = await this.orm.call(model, buttonDef.name, [resIds]);
         if (result && typeof result === "object" && result.type) {

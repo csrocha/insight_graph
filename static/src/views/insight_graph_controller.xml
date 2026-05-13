@@ -2,6 +2,25 @@
 <templates xml:space="preserve">
     <t t-name="insight_graph.InsightGraphController">
         <Layout display="props.display" className="'o_insight_graph_view'">
+            <t t-set-slot="control-panel-additional-actions">
+                <t t-if="!state.selectionInfo and state.graphData">
+                    <div class="dropdown">
+                        <button type="button"
+                                class="btn btn-secondary o_cp_action_menus dropdown-toggle"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                            <i class="fa fa-cog me-1"/>Acciones
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <button type="button" class="dropdown-item" t-on-click="onExportGraphML">
+                                    <i class="fa fa-download me-1"/>Exportar a GraphML
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </t>
+            </t>
             <t t-set-slot="layout-actions">
                 <t t-if="state.selectionInfo">
                     <div class="o_insight_selection_bar d-flex align-items-center gap-2 px-2">
@@ -41,6 +60,12 @@
                                 t-on-click="onDeleteSelectedNodes"
                                 title="Eliminar registro(s)">
                             <i class="fa fa-trash me-1"/>Eliminar
+                        </button>
+                        <div class="o_insight_legend_sep"/>
+                        <button class="btn btn-sm o_insight_action_btn"
+                                t-on-click="onExportGraphML"
+                                title="Exportar grafo a GraphML">
+                            <i class="fa fa-download me-1"/>Exportar GraphML
                         </button>
                     </div>
                 </t>
