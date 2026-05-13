@@ -636,7 +636,7 @@ export class InsightGraphRenderer extends Component {
                 y: pos.y - 10,
                 label: data.label,
                 model: data.model,
-                flowState: data.flowState,
+                flowState: data.flowState || undefined,
                 fields: data.tooltipFields,
             };
         });

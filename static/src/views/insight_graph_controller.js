@@ -10,6 +10,7 @@ import { SearchBar } from "@web/search/search_bar/search_bar";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
+import { useDebugCategory } from "@web/core/debug/debug_context";
 import { InsightGraphArchParser } from "./insight_graph_arch_parser";
 import { InsightGraphRenderer } from "./insight_graph_renderer";
 import { getPins, pinNode, unpinNode } from "../utils/insight_graph_pins";
@@ -48,6 +49,7 @@ export class InsightGraphController extends Component {
         this.actionService = useService("action");
         this.dialogService = useService("dialog");
         this.searchBarToggler = useSearchBarToggler();
+        useDebugCategory("view", { component: this });
 
         this.state = useState({
             loading: true,
