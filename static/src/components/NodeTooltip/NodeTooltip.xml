@@ -6,7 +6,7 @@
             <div class="fw-semibold mb-1 text-truncate" t-esc="props.info.label"/>
             <t t-if="props.info.flowState">
                 <span t-attf-class="badge mb-1 o_insight_badge_{{ props.info.flowState }}"
-                      t-esc="props.info.flowState"/>
+                      t-esc="props.info.flowStateLabel || props.info.flowState"/>
             </t>
             <t t-if="props.info.fields and props.info.fields.length">
                 <table class="table table-sm table-borderless mb-0 mt-1" style="font-size:11px">

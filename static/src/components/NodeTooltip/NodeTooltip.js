@@ -13,6 +13,7 @@ export class NodeTooltip extends Component {
                 label: String,
                 model: { type: String, optional: true },
                 flowState: { type: String, optional: true },
+                flowStateLabel: { type: String, optional: true },
                 fields: { type: Array, optional: true },
             },
         },

@@ -153,9 +153,15 @@ export class InsightGraphRenderer extends Component {
 
     get colorLegend() {
         const { nodes } = this.props.graphData;
-        const states = [...new Set(nodes.map((n) => n.flowState).filter(Boolean))];
-        return states.map((state) => ({
+        const seen = new Map(); // state key → human-readable label
+        for (const n of nodes) {
+            if (n.flowState && !seen.has(n.flowState)) {
+                seen.set(n.flowState, n.flowStateLabel || n.flowState);
+            }
+        }
+        return [...seen.entries()].map(([state, label]) => ({
             state,
+            label,
             ...(this.state.colorMap[state] || this.state.colorMap._default),
         }));
     }
@@ -414,7 +420,7 @@ export class InsightGraphRenderer extends Component {
     _notifySelectionChange() {
         const selectedNodes = this.props.graphData.nodes
             .filter((n) => this.state.selectedNodeIds[n.id])
-            .map((n) => ({ model: n.model, resId: n.resId, id: n.id, label: n.label, isPinned: !!(this.state.pinnedNodeIds[n.id] || n.isPinned) }));
+            .map((n) => ({ model: n.model, resId: n.resId, id: n.id, label: n.displayName || n.label, isPinned: !!(this.state.pinnedNodeIds[n.id] || n.isPinned) }));
 
         this.props.onSelectionChange?.(
             this.selectionCount,
@@ -456,7 +462,7 @@ export class InsightGraphRenderer extends Component {
             this.state.selectedNodeIds[nodeId] = true;
             this._nodeDivs[nodeId]?.classList.add("o_ig_node_selected");
             const nodeData = this.props.graphData.nodes.find((n) => n.id === nodeId);
-            console.debug(`[ig:select] nodeId=${nodeId} label="${nodeData?.label}" model=${nodeData?.model}`);
+            console.debug(`[ig:select] nodeId=${nodeId} label="${nodeData?.displayName || nodeData?.label}" model=${nodeData?.model}`);
             this._updateContextMenuPos();
         } else {
             console.debug("[ig:select] deselected");
@@ -661,9 +667,10 @@ export class InsightGraphRenderer extends Component {
             this.state.tooltip = {
                 x: pos.x + 12,
                 y: pos.y - 10,
-                label: data.label,
+                label: data.displayName || data.label,
                 model: data.model,
                 flowState: data.flowState || undefined,
+                flowStateLabel: data.flowStateLabel || undefined,
                 fields: data.tooltipFields,
             };
         });
@@ -789,8 +796,8 @@ export class InsightGraphRenderer extends Component {
                 selector: "node",
                 style: {
                     label: "data(label)",
-                    "text-wrap": "ellipsis",
-                    "text-max-width": "110px",
+                    "text-wrap": "wrap",
+                    "text-max-width": "120px",
                     "font-size": "11px",
                     "text-valign": "center",
                     "text-halign": "center",

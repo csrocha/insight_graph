@@ -98,16 +98,23 @@ export class InsightGraphController extends Component {
                 modelConfigs[model] = parser.parse(doc.documentElement);
             }
 
-            // Fetch human-readable field labels for all link fields (parallel RPCs)
+            // Fetch human-readable field metadata: link fieldStrings + colorField selection labels
             await Promise.all(
                 Object.entries(modelConfigs).map(async ([model, config]) => {
-                    if (!config?.links?.length) return;
-                    const fieldNames = [...new Set(config.links.map((l) => l.field))];
+                    const needed = new Set();
+                    for (const l of config?.links || []) needed.add(l.field);
+                    if (config?.colorField) needed.add(config.colorField);
+                    if (!needed.size) return;
+
                     const fieldsInfo = await this.orm.call(
-                        model, "fields_get", [fieldNames], { attributes: ["string"] }
+                        model, "fields_get", [[...needed]], { attributes: ["string", "selection"] }
                     );
-                    for (const link of config.links) {
+                    for (const link of config.links || []) {
                         link.fieldString = fieldsInfo[link.field]?.string || link.field;
+                    }
+                    const colorFieldInfo = fieldsInfo[config?.colorField];
+                    if (colorFieldInfo?.selection) {
+                        config.stateLabels = Object.fromEntries(colorFieldInfo.selection);
                     }
                 })
             );
@@ -342,7 +349,7 @@ export class InsightGraphController extends Component {
     onDeleteNode(nodeData) {
         this.dialogService.add(ConfirmationDialog, {
             title: "Eliminar registro",
-            body: `¿Eliminar "${nodeData.label}"? Esta acción no se puede deshacer.`,
+            body: `¿Eliminar "${nodeData.displayName || nodeData.label}"? Esta acción no se puede deshacer.`,
             confirm: async () => {
                 await this.orm.unlink(nodeData.model, [nodeData.resId]);
                 await this._loadGraphData();
@@ -589,8 +596,12 @@ export class InsightGraphController extends Component {
         const primary = config?.primaryField || "display_name";
         const colorFieldName = config?.colorField;
         const rawLabel = rec[primary];
-        const label = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
+        const displayName = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
         const flowState = colorFieldName ? (rec[colorFieldName] || null) : null;
+        const flowStateLabel = flowState
+            ? (config?.stateLabels?.[flowState] || flowState)
+            : null;
+        const label = flowStateLabel ? `${displayName}\n${flowStateLabel}` : displayName;
 
         // Raw field values for button/field invisible evaluation AND pin edge detection.
         // Must be computed before tooltipFields so computable invisible expressions can
@@ -639,10 +650,12 @@ export class InsightGraphController extends Component {
         return {
             id: this._nodeId(model, rec.id),
             label,
+            displayName,
             model,
             resId: rec.id,
             shape: config?.shape || "rectangle",
             flowState,
+            flowStateLabel,
             isPrimary,
             tooltipFields,
             rawFields,

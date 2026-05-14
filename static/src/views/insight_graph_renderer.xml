@@ -13,7 +13,7 @@
                         <t t-foreach="colorLegend" t-as="item" t-key="item.state">
                             <span class="o_insight_badge"
                                   t-att-style="'background:' + item.bgColor + ';color:' + item.textColor + ';border:1px solid ' + item.borderColor">
-                                <t t-esc="item.state"/>
+                                <t t-esc="item.label"/>
                             </span>
                         </t>
                     </div>
