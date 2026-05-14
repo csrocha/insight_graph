@@ -646,11 +646,17 @@ export class InsightGraphController extends Component {
             isPrimary,
             tooltipFields,
             rawFields,
-            imageDataUrl,
-            // HTML overlay fields (only populated in template mode)
-            htmlNode: hasTemplate ? true : undefined,
-            nodeWidth: hasTemplate ? (config?.nodeWidth || 180) : null,
-            nodeHeight: hasTemplate ? (config?.nodeHeight || 120) : null,
+            // Only include imageDataUrl when there is actually an image — setting it to null
+            // causes Cytoscape's [imageDataUrl] selector to still match (null key exists in data),
+            // which incorrectly applies `text-valign: bottom` and `height: 82px` to all nodes.
+            ...(imageDataUrl ? { imageDataUrl } : {}),
+            // HTML overlay fields: only include when in template mode to avoid Cytoscape
+            // misinterpreting null/undefined values as matching data-mapped style selectors.
+            ...(hasTemplate ? {
+                htmlNode: true,
+                nodeWidth: config?.nodeWidth || 180,
+                nodeHeight: config?.nodeHeight || 120,
+            } : {}),
             displayFields: this._buildDisplayFields(rec, config),
         };
     }
