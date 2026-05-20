@@ -3,18 +3,22 @@
 import { Component, onWillStart, onWillUpdateProps, useState, useSubEnv } from "@odoo/owl";
 import { evaluateBooleanExpr } from "@web/core/py_js/py_utils";
 import { useService } from "@web/core/utils/hooks";
+import { Dropdown } from "@web/core/dropdown/dropdown";
+import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { Layout } from "@web/search/layout";
 import { SearchBar } from "@web/search/search_bar/search_bar";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
+import { useDebugCategory } from "@web/core/debug/debug_context";
 import { InsightGraphArchParser } from "./insight_graph_arch_parser";
 import { InsightGraphRenderer } from "./insight_graph_renderer";
 import { getPins, pinNode, unpinNode } from "../utils/insight_graph_pins";
+import { formatMonetary } from "@web/views/fields/formatters";
 
 export class InsightGraphController extends Component {
     static template = "insight_graph.InsightGraphController";
-    static components = { InsightGraphRenderer, Layout, SearchBar };
+    static components = { InsightGraphRenderer, Layout, SearchBar, Dropdown, DropdownItem };
     static props = {
         resModel: { type: String },
         domain: { type: Array, optional: true },
@@ -46,6 +50,7 @@ export class InsightGraphController extends Component {
         this.actionService = useService("action");
         this.dialogService = useService("dialog");
         this.searchBarToggler = useSearchBarToggler();
+        useDebugCategory("view", { component: this });
 
         this.state = useState({
             loading: true,
@@ -93,16 +98,23 @@ export class InsightGraphController extends Component {
                 modelConfigs[model] = parser.parse(doc.documentElement);
             }
 
-            // Fetch human-readable field labels for all link fields (parallel RPCs)
+            // Fetch human-readable field metadata: link fieldStrings + colorField selection labels
             await Promise.all(
                 Object.entries(modelConfigs).map(async ([model, config]) => {
-                    if (!config?.links?.length) return;
-                    const fieldNames = [...new Set(config.links.map((l) => l.field))];
+                    const needed = new Set();
+                    for (const l of config?.links || []) needed.add(l.field);
+                    if (config?.colorField) needed.add(config.colorField);
+                    if (!needed.size) return;
+
                     const fieldsInfo = await this.orm.call(
-                        model, "fields_get", [fieldNames], { attributes: ["string"] }
+                        model, "fields_get", [[...needed]], { attributes: ["string", "selection"] }
                     );
-                    for (const link of config.links) {
+                    for (const link of config.links || []) {
                         link.fieldString = fieldsInfo[link.field]?.string || link.field;
+                    }
+                    const colorFieldInfo = fieldsInfo[config?.colorField];
+                    if (colorFieldInfo?.selection) {
+                        config.stateLabels = Object.fromEntries(colorFieldInfo.selection);
                     }
                 })
             );
@@ -315,6 +327,12 @@ export class InsightGraphController extends Component {
         }
     }
 
+    // ── Toolbar actions ──────────────────────────────────────────────────────
+
+    onCreateRecord() {
+        this.props.createRecord?.();
+    }
+
     // ── Node action handlers ─────────────────────────────────────────────────
 
     onOpenForm(nodeData) {
@@ -331,7 +349,7 @@ export class InsightGraphController extends Component {
     onDeleteNode(nodeData) {
         this.dialogService.add(ConfirmationDialog, {
             title: "Eliminar registro",
-            body: `¿Eliminar "${nodeData.label}"? Esta acción no se puede deshacer.`,
+            body: `¿Eliminar "${nodeData.displayName || nodeData.label}"? Esta acción no se puede deshacer.`,
             confirm: async () => {
                 await this.orm.unlink(nodeData.model, [nodeData.resId]);
                 await this._loadGraphData();
@@ -390,6 +408,15 @@ export class InsightGraphController extends Component {
         await this._loadGraphData();
     }
 
+    async onUnpinSelectedNodes() {
+        const nodes = this.state.selectionInfo?.selectedNodes;
+        if (!nodes?.length) return;
+        for (const node of nodes) {
+            unpinNode(node.model, node.resId);
+        }
+        await this._loadGraphData();
+    }
+
     async onDeleteSelectedNodes() {
         const nodes = this.state.selectionInfo?.selectedNodes;
         if (!nodes?.length) return;
@@ -406,6 +433,79 @@ export class InsightGraphController extends Component {
                 await this._loadGraphData();
             },
         });
+    }
+
+    onExportGraphML() {
+        const graphData = this.state.graphData;
+        if (!graphData) return;
+
+        const esc = (str) => String(str ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+        const allFieldNames = new Set();
+        for (const node of graphData.nodes) {
+            for (const f of node.tooltipFields || []) allFieldNames.add(f.name);
+        }
+
+        const hiddenNodeIds = this._rendererActions?.getHiddenNodeIds?.() ?? new Set();
+
+        const lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<graphml xmlns="http://graphml.graphdrawing.org/graphml">',
+            '  <key id="d_label" for="node" attr.name="label" attr.type="string"/>',
+            '  <key id="d_model" for="node" attr.name="model" attr.type="string"/>',
+            '  <key id="d_resId" for="node" attr.name="resId" attr.type="int"/>',
+            '  <key id="d_flowState" for="node" attr.name="flowState" attr.type="string"/>',
+            '  <key id="d_hidden" for="node" attr.name="hidden" attr.type="boolean"/>',
+            '  <key id="d_pinned" for="node" attr.name="pinned" attr.type="boolean"/>',
+        ];
+        for (const fname of allFieldNames) {
+            lines.push(`  <key id="d_${esc(fname)}" for="node" attr.name="${esc(fname)}" attr.type="string"/>`);
+        }
+        lines.push('  <key id="e_model" for="edge" attr.name="model" attr.type="string"/>');
+        lines.push('  <key id="e_field" for="edge" attr.name="field" attr.type="string"/>');
+        lines.push('  <graph id="G" edgedefault="directed">');
+
+        for (const node of graphData.nodes) {
+            lines.push(`    <node id="${esc(node.id)}">`);
+            lines.push(`      <data key="d_label">${esc(node.label)}</data>`);
+            lines.push(`      <data key="d_model">${esc(node.model)}</data>`);
+            lines.push(`      <data key="d_resId">${node.resId}</data>`);
+            if (node.flowState) {
+                lines.push(`      <data key="d_flowState">${esc(node.flowState)}</data>`);
+            }
+            if (hiddenNodeIds.has(node.id)) {
+                lines.push('      <data key="d_hidden">true</data>');
+            }
+            if (node.isPinned) {
+                lines.push('      <data key="d_pinned">true</data>');
+            }
+            for (const f of node.tooltipFields || []) {
+                lines.push(`      <data key="d_${esc(f.name)}">${esc(f.value)}</data>`);
+            }
+            lines.push('    </node>');
+        }
+
+        graphData.edges.forEach((edge, i) => {
+            lines.push(`    <edge id="e${i}" source="${esc(edge.source)}" target="${esc(edge.target)}">`);
+            lines.push(`      <data key="e_model">${esc(edge.relationModel)}</data>`);
+            lines.push(`      <data key="e_field">${esc(edge.relationField)}</data>`);
+            lines.push('    </edge>');
+        });
+
+        lines.push('  </graph>');
+        lines.push('</graphml>');
+
+        const blob = new Blob([lines.join("\n")], { type: "application/xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${this.props.resModel.replace(/\./g, "_")}_graph.graphml`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     async onExecuteAction(model, resIds, buttonDef) {
@@ -496,8 +596,12 @@ export class InsightGraphController extends Component {
         const primary = config?.primaryField || "display_name";
         const colorFieldName = config?.colorField;
         const rawLabel = rec[primary];
-        const label = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
+        const displayName = Array.isArray(rawLabel) ? rawLabel[1] : String(rawLabel ?? rec.id);
         const flowState = colorFieldName ? (rec[colorFieldName] || null) : null;
+        const flowStateLabel = flowState
+            ? (config?.stateLabels?.[flowState] || flowState)
+            : null;
+        const label = flowStateLabel ? `${displayName}\n${flowStateLabel}` : displayName;
 
         // Raw field values for button/field invisible evaluation AND pin edge detection.
         // Must be computed before tooltipFields so computable invisible expressions can
@@ -536,17 +640,57 @@ export class InsightGraphController extends Component {
                 return { name: f.name, value: Array.isArray(val) ? val[1] : String(val ?? "") };
             });
 
+        const imageField = config?.imageField;
+        const imageDataUrl = imageField && rec[imageField]
+            ? `data:image/png;base64,${rec[imageField]}`
+            : null;
+
+        const hasTemplate = Boolean(config?.nodeTemplate);
+
         return {
             id: this._nodeId(model, rec.id),
             label,
+            displayName,
             model,
             resId: rec.id,
             shape: config?.shape || "rectangle",
             flowState,
+            flowStateLabel,
             isPrimary,
             tooltipFields,
             rawFields,
+            // Only include imageDataUrl when there is actually an image — setting it to null
+            // causes Cytoscape's [imageDataUrl] selector to still match (null key exists in data),
+            // which incorrectly applies `text-valign: bottom` and `height: 82px` to all nodes.
+            ...(imageDataUrl ? { imageDataUrl } : {}),
+            // HTML overlay fields: only include when in template mode to avoid Cytoscape
+            // misinterpreting null/undefined values as matching data-mapped style selectors.
+            ...(hasTemplate ? {
+                htmlNode: true,
+                nodeWidth: config?.nodeWidth || 180,
+                nodeHeight: config?.nodeHeight || 120,
+            } : {}),
+            displayFields: this._buildDisplayFields(rec, config),
         };
+    }
+
+    _buildDisplayFields(rec, config) {
+        const result = {};
+        for (const f of config?.nodeFields || []) {
+            const val = rec[f.name];
+            if (f.monetary && val !== false && val != null) {
+                const rawCurrency = f.currencyField ? rec[f.currencyField] : undefined;
+                const currencyId = Array.isArray(rawCurrency) ? rawCurrency[0] : rawCurrency;
+                result[f.name] = formatMonetary(val, { currencyId });
+            } else {
+                result[f.name] = Array.isArray(val) ? val[1] : String(val ?? "");
+            }
+        }
+        const imgField = config?.imageField;
+        if (imgField && rec[imgField]) {
+            result[imgField] = `data:image/png;base64,${rec[imgField]}`;
+        }
+        return result;
     }
 
     _extractIds(fieldValue) {

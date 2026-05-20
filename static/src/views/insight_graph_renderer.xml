@@ -13,7 +13,7 @@
                         <t t-foreach="colorLegend" t-as="item" t-key="item.state">
                             <span class="o_insight_badge"
                                   t-att-style="'background:' + item.bgColor + ';color:' + item.textColor + ';border:1px solid ' + item.borderColor">
-                                <t t-esc="item.state"/>
+                                <t t-esc="item.label"/>
                             </span>
                         </t>
                     </div>
@@ -100,6 +100,7 @@
             <!-- Graph canvas + overlays -->
             <div t-ref="graphBody" class="o_insight_graph_body position-relative">
                 <div t-ref="cytoscapeContainer" style="width:100%;height:100%"/>
+                <div t-ref="htmlLayer" class="o_ig_html_layer"/>
 
                 <!-- Hover tooltip — hidden while a node is selected or a drag is active -->
                 <NodeTooltip t-if="state.tooltip and !selectedNodeId and !state.linkingState"
