@@ -15,7 +15,10 @@ ver el [AGENTS.md de fop_odoo_theme](https://github.com/observatoriopyme/fop_odo
 - [ ] Nuevos modelos tienen su entrada en `security/ir.model.access.csv`
 - [ ] No se usa SQL crudo salvo necesidad justificada de performance
 - [ ] Los templates XML usan `t-out` (no `t-esc`) para Odoo 17
-- [ ] `CHANGELOG.md` actualizado con el **prompt** que motivo el cambio
-  **y las discusiones de diseno relevantes**: alternativas evaluadas,
-  decision tomada y motivos de descarte. No alcanza con listar que cambio;
-  hay que registrar el razonamiento.
+
+## Actualización de CHANGELOG (obligatorio)
+
+**Antes de cada commit**, agregar una entrada en `CHANGELOG.md` siguiendo el
+formato y las reglas definidas en la **Sección 17 del AGENTS.md raíz** de `fop-odoo`.
+
+No es un checkbox opcional: sin entrada en CHANGELOG no se completa el commit.
